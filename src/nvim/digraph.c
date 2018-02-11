@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /// @file digraph.c
 ///
 /// code for digraphs
@@ -790,6 +793,7 @@ static digr_T digraphdefault[] =
   { '/', '-', 0x2020 },
   { '/', '=', 0x2021 },
   { '.', '.', 0x2025 },
+  { ',', '.', 0x2026 },
   { '%', '0', 0x2030 },
   { '1', '\'', 0x2032 },
   { '2', '\'', 0x2033 },
@@ -1448,10 +1452,8 @@ int get_digraph(int cmdline)
 {
   int cc;
   no_mapping++;
-  allow_keys++;
   int c = plain_vgetc();
   no_mapping--;
-  allow_keys--;
 
   if (c != ESC) {
     // ESC cancels CTRL-K
@@ -1468,10 +1470,8 @@ int get_digraph(int cmdline)
       add_to_showcmd(c);
     }
     no_mapping++;
-    allow_keys++;
     cc = plain_vgetc();
     no_mapping--;
-    allow_keys--;
 
     if (cc != ESC) {
       // ESC cancels CTRL-K
@@ -1573,7 +1573,8 @@ int getdigraph(int char1, int char2, int meta_char)
 
   if (((retval = getexactdigraph(char1, char2, meta_char)) == char2)
       && (char1 != char2)
-      && ((retval = getexactdigraph(char2, char1, meta_char)) == char1)) {
+      && ((retval = getexactdigraph(char2, char1, meta_char))  // -V764
+          == char1)) {
     return char2;
   }
   return retval;
@@ -1679,11 +1680,7 @@ static void printdigraph(digr_T *dp)
 
   int list_width;
 
-  if ((dy_flags & DY_UHEX) || has_mbyte) {
-    list_width = 13;
-  } else {
-    list_width = 11;
-  }
+  list_width = 13;
 
   if (dp->result != 0) {
     if (msg_col > Columns - list_width) {
@@ -1699,20 +1696,16 @@ static void printdigraph(digr_T *dp)
       }
     }
 
-    p = buf;
+    p = &buf[0];
     *p++ = dp->char1;
     *p++ = dp->char2;
     *p++ = ' ';
 
-    if (has_mbyte) {
-      // add a space to draw a composing char on
-      if (enc_utf8 && utf_iscomposing(dp->result)) {
-        *p++ = ' ';
-      }
-      p += (*mb_char2bytes)(dp->result, p);
-    } else {
-      *p++ = (char_u)dp->result;
+    // add a space to draw a composing char on
+    if (utf_iscomposing(dp->result)) {
+      *p++ = ' ';
     }
+    p += (*mb_char2bytes)(dp->result, p);
 
     if (char2cells(dp->result) == 1) {
       *p++ = ' ';
@@ -1848,6 +1841,16 @@ void ex_loadkeymap(exarg_T *eap)
   status_redraw_curbuf();
 }
 
+/// Frees the buf_T.b_kmap_ga field of a buffer.
+void keymap_ga_clear(garray_T *kmap_ga)
+{
+  kmap_T *kp = (kmap_T *)kmap_ga->ga_data;
+  for (int i = 0; i < kmap_ga->ga_len; i++) {
+    xfree(kp[i].from);
+    xfree(kp[i].to);
+  }
+}
+
 /// Stop using 'keymap'.
 static void keymap_unload(void)
 {
@@ -1865,12 +1868,11 @@ static void keymap_unload(void)
   // clear the ":lmap"s
   kp = (kmap_T *)curbuf->b_kmap_ga.ga_data;
 
-  for (int i = 0; i < curbuf->b_kmap_ga.ga_len; ++i) {
+  for (int i = 0; i < curbuf->b_kmap_ga.ga_len; i++) {
     vim_snprintf((char *)buf, sizeof(buf), "<buffer> %s", kp[i].from);
-    (void)do_map(1, buf, LANGMAP, FALSE);
-    xfree(kp[i].from);
-    xfree(kp[i].to);
+    (void)do_map(1, buf, LANGMAP, false);
   }
+  keymap_ga_clear(&curbuf->b_kmap_ga);
 
   p_cpo = save_cpo;
 

@@ -8,8 +8,6 @@ local reset, set_additional_cmd, clear =
   shada_helpers.reset, shada_helpers.set_additional_cmd,
   shada_helpers.clear
 
-if helpers.pending_win32(pending) then return end
-
 describe('ShaDa support code', function()
   local testfilename = 'Xtestfile-functional-shada-buffers'
   local testfilename_2 = 'Xtestfile-functional-shada-buffers-2'
@@ -88,5 +86,17 @@ describe('ShaDa support code', function()
     reset()
     eq(1, funcs.bufnr('$'))
     eq('', funcs.bufname(1))
+  end)
+
+  it('restores 1 buffer with %1 in &shada, #5759', function()
+    set_additional_cmd('set shada+=%1')
+    reset()
+    nvim_command('edit ' .. testfilename)
+    nvim_command('edit ' .. testfilename_2)
+    nvim_command('qall')
+    reset()
+    eq(2, funcs.bufnr('$'))
+    eq('', funcs.bufname(1))
+    eq(testfilename, funcs.bufname(2))
   end)
 end)

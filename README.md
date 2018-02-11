@@ -1,52 +1,91 @@
-![Neovim](https://raw.githubusercontent.com/neovim/neovim.github.io/master/logos/neovim-logo.png)
+[![Neovim](https://raw.githubusercontent.com/neovim/neovim.github.io/master/logos/neovim-logo-600x173.png)](https://neovim.io)
 
-[Website] | [Community] | [Wiki] | [Documentation] | [Mailing List] | [Twitter] | [Bountysource]
+[Wiki](https://github.com/neovim/neovim/wiki) |
+[Documentation](https://neovim.io/doc) |
+[Twitter](https://twitter.com/Neovim) |
+[Community](https://neovim.io/community/) |
+[Gitter **Chat**](https://gitter.im/neovim/neovim)
 
 [![Travis Build Status](https://travis-ci.org/neovim/neovim.svg?branch=master)](https://travis-ci.org/neovim/neovim)
-[![AppVeyor Build status](https://ci.appveyor.com/api/projects/status/cf1jwc29198748we/branch/master?svg=true)](https://ci.appveyor.com/project/neovim/neovim/branch/master)
-[![Pull requests waiting for review](https://badge.waffle.io/neovim/neovim.svg?label=RFC&title=RFCs)](https://waffle.io/neovim/neovim)
-[![Coverage Status](https://img.shields.io/coveralls/neovim/neovim.svg)](https://coveralls.io/r/neovim/neovim)
+[![AppVeyor Build status](https://ci.appveyor.com/api/projects/status/urdqjrik5u521fac/branch/master?svg=true)](https://ci.appveyor.com/project/neovim/neovim/branch/master)
+[![codecov](https://img.shields.io/codecov/c/github/neovim/neovim.svg)](https://codecov.io/gh/neovim/neovim)
 [![Coverity Scan Build](https://scan.coverity.com/projects/2227/badge.svg)](https://scan.coverity.com/projects/2227)
-[![Clang Scan Build](http://neovim.io/doc/reports/clang/badge.svg)](http://neovim.io/doc/reports/clang)
-[![Gitter chat](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/neovim/neovim?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Clang Scan Build](https://neovim.io/doc/reports/clang/badge.svg)](https://neovim.io/doc/reports/clang)
+[![PVS-studio Check](https://neovim.io/doc/reports/pvs/badge.svg)](https://neovim.io/doc/reports/pvs)
+
+[![Debian CI](https://badges.debian.net/badges/debian/testing/neovim/version.svg)](https://buildd.debian.org/neovim)
+[![Downloads](https://img.shields.io/github/downloads/neovim/neovim/total.svg?maxAge=2592001)](https://github.com/neovim/neovim/releases/)
 
 Neovim is a project that seeks to aggressively refactor Vim in order to:
 
 - Simplify maintenance and encourage [contributions](CONTRIBUTING.md)
 - Split the work between multiple developers
-- Enable the implementation of new/modern UIs without modifications to the core
-- Improve extensibility with a new [plugin architecture](https://github.com/neovim/neovim/wiki/Plugin-UI-architecture)
+- Enable [advanced UIs] without modifications to the core
+- Maximize [extensibility](https://github.com/neovim/neovim/wiki/Plugin-UI-architecture)
 
-For more details, see
-[the wiki](https://github.com/neovim/neovim/wiki/Introduction)!
+See [the wiki](https://github.com/neovim/neovim/wiki/Introduction) and [Roadmap]
+for more information.
 
 [![Throughput Graph](https://graphs.waffle.io/neovim/neovim/throughput.svg)](https://waffle.io/neovim/neovim/metrics)
 
-What's been done so far
------------------------
+Install from source
+-------------------
 
-- RPC API based on [MessagePack](https://msgpack.org)
-- Embedded [terminal emulator](https://neovim.io/doc/user/nvim_terminal_emulator.html)
+    make CMAKE_BUILD_TYPE=RelWithDebInfo
+    sudo make install
+
+To install to a non-default location, specify `CMAKE_INSTALL_PREFIX`:
+
+    make CMAKE_EXTRA_FLAGS="-DCMAKE_INSTALL_PREFIX=/full/path/"
+    make install
+
+See [the wiki](https://github.com/neovim/neovim/wiki/Building-Neovim) for details.
+
+Install from package
+--------------------
+
+Pre-built packages for Windows, macOS, and Linux are found at the
+[Releases](https://github.com/neovim/neovim/releases/) page.
+
+Managed packages are in [Homebrew], [Debian], [Ubuntu], [Fedora], [Arch Linux], [Gentoo],
+and [more](https://github.com/neovim/neovim/wiki/Installing-Neovim)!
+
+Project layout
+--------------
+
+    ├─ ci/              build automation
+    ├─ cmake/           build scripts
+    ├─ runtime/         user plugins/docs
+    ├─ src/             application source code (see src/nvim/README.md)
+    │  ├─ api/          API subsystem
+    │  ├─ eval/         VimL subsystem
+    │  ├─ event/        event-loop subsystem
+    │  ├─ generators/   code generation (pre-compilation)
+    │  ├─ lib/          generic data structures
+    │  ├─ lua/          lua subsystem
+    │  ├─ msgpack_rpc/  RPC subsystem
+    │  ├─ os/           low-level platform code
+    │  └─ tui/          built-in UI
+    ├─ third-party/     cmake subproject to build dependencies
+    └─ test/            tests (see test/README.md)
+
+- To disable `third-party/` specify `USE_BUNDLED_DEPS=NO` or `USE_BUNDLED=NO`
+  (CMake option).
+
+Features
+--------
+
+- Modern [GUIs](https://github.com/neovim/neovim/wiki/Related-projects#gui)
+- [API](https://github.com/neovim/neovim/wiki/Related-projects#api-clients)
+  access from any language including clojure, lisp, go, haskell, lua,
+  javascript, perl, python, ruby, rust.
+- Embedded, scriptable [terminal emulator](https://neovim.io/doc/user/nvim_terminal_emulator.html)
 - Asynchronous [job control](https://github.com/neovim/neovim/pull/2247)
 - [Shared data (shada)](https://github.com/neovim/neovim/pull/2506) among multiple editor instances
 - [XDG base directories](https://github.com/neovim/neovim/pull/3470) support
-- [libuv](https://github.com/libuv/libuv/)-based platform/OS/"mch" layer
-- [Pushdown automaton](https://github.com/neovim/neovim/pull/3413) input model
-- 1000s of new tests
-- Legacy tests converted to Lua tests
+- Compatible with most Vim plugins, including Ruby and Python plugins.
 
-See [`:help nvim-features`][nvim-features] for a comprehensive list.
-
-What's being worked on now
---------------------------
-
-See the [Roadmap].
-
-How do I get it?
-----------------
-
-There is a formula for OSX/homebrew, a PKGBUILD for Arch Linux, RPM, deb, and
-more. See [the wiki](https://github.com/neovim/neovim/wiki/Installing-Neovim)!
+See [`:help nvim-features`][nvim-features] for the full list!
 
 License
 -------
@@ -74,15 +113,15 @@ See `LICENSE` for details.
     You can also sponsor the development of Vim.  Vim sponsors can vote for
     features.  The money goes to Uganda anyway.
 
-[Website]: http://neovim.io
-[Community]: http://neovim.io/community/
-[Wiki]: https://github.com/neovim/neovim/wiki
-[Documentation]: http://neovim.io/doc
-[Mailing List]: https://groups.google.com/forum/#!forum/neovim
-[Twitter]: http://twitter.com/Neovim
-[Bountysource]: https://www.bountysource.com/teams/neovim
 [license-commit]: https://github.com/neovim/neovim/commit/b17d9691a24099c9210289f16afb1a498a89d803
 [nvim-features]: https://neovim.io/doc/user/vim_diff.html#nvim-features
 [Roadmap]: https://neovim.io/roadmap/
+[advanced UIs]: https://github.com/neovim/neovim/wiki/Related-projects#gui
+[Homebrew]: https://github.com/neovim/homebrew-neovim#installation
+[Debian]: https://packages.debian.org/testing/neovim
+[Ubuntu]: http://packages.ubuntu.com/search?keywords=neovim
+[Fedora]: https://admin.fedoraproject.org/pkgdb/package/rpms/neovim
+[Arch Linux]: https://www.archlinux.org/packages/?q=neovim
+[Gentoo]: https://packages.gentoo.org/packages/app-editors/neovim
 
 <!-- vim: set tw=80: -->

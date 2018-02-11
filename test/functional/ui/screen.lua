@@ -1,31 +1,17 @@
--- This module contains the Screen class, a complete Nvim screen implementation
--- designed for functional testing. The goal is to provide a simple and
--- intuitive API for verifying screen state after a set of actions.
+-- This module contains the Screen class, a complete Nvim UI implementation
+-- designed for functional testing (verifying screen state, in particular).
 --
--- The screen class exposes a single assertion method, "Screen:expect". This
--- method takes a string representing the expected screen state and an optional
--- set of attribute identifiers for checking highlighted characters(more on
--- this later).
---
--- The string passed to "expect" will be processed according to these rules:
---
---  - Each line of the string represents and is matched individually against
---    a screen row.
---  - The entire string is stripped of common indentation
---  - Expected screen rows are stripped of the last character. The last
---    character should be used to write pipes(|) that make clear where the
---    screen ends
---  - The last line is stripped, so the string must have (row count + 1)
---    lines.
+-- Screen:expect() takes a string representing the expected screen state and an
+-- optional set of attribute identifiers for checking highlighted characters.
 --
 -- Example usage:
 --
 --     local screen = Screen.new(25, 10)
---     -- attach the screen to the current Nvim instance
+--     -- Attach the screen to the current Nvim instance.
 --     screen:attach()
---     --enter insert mode and type some text
+--     -- Enter insert-mode and type some text.
 --     feed('ihello screen')
---     -- declare an expectation for the eventual screen state
+--     -- Assert the expected screen state.
 --     screen:expect([[
 --       hello screen             |
 --       ~                        |
@@ -39,31 +25,19 @@
 --       -- INSERT --             |
 --     ]]) -- <- Last line is stripped
 --
--- Since screen updates are received asynchronously, "expect" is actually
--- specifying the eventual screen state. This is how "expect" works: It will
--- start the event loop with a timeout of 5 seconds. Each time it receives an
--- update the expected state will be checked against the updated state.
+-- Since screen updates are received asynchronously, expect() actually specifies
+-- the _eventual_ screen state.
 --
--- If the expected state matches the current state, the event loop will be
--- stopped and "expect" will return.  If the timeout expires, the last match
--- error will be reported and the test will fail.
+-- This is how expect() works:
+--  * It starts the event loop with a timeout.
+--  * Each time it receives an update it checks that against the expected state.
+--    * If the expected state matches the current state, the event loop will be
+--      stopped and expect() will return.
+--    * If the timeout expires, the last match error will be reported and the
+--      test will fail.
 --
--- If the second argument is passed to "expect", the screen rows will be
--- transformed before being matched against the string lines. The
--- transformation rule is simple: Each substring "S" composed with characters
--- having the exact same set of attributes will be substituted by "{K:S}",
--- where K is a key associated the attribute set via the second argument of
--- "expect".
--- If a transformation table is present, unexpected attribute sets in the final
--- state is considered an error. To make testing simpler, a list of attribute
--- sets that should be ignored can be passed as a third argument. Alternatively,
--- this third argument can be "true" to indicate that all unexpected attribute
--- sets should be ignored.
---
--- To illustrate how this works, let's say that in the above example we wanted
--- to assert that the "-- INSERT --" string is highlighted with the bold
--- attribute(which normally is), here's how the call to "expect" should look
--- like:
+-- Continuing the above example, say we want to assert that "-- INSERT --" is
+-- highlighted with the bold attribute. The expect() call should look like this:
 --
 --     NonText = Screen.colors.Blue
 --     screen:expect([[
@@ -81,29 +55,21 @@
 --
 -- In this case "b" is a string associated with the set composed of one
 -- attribute: bold. Note that since the {b:} markup is not a real part of the
--- screen, the delimiter(|) had to be moved right. Also, the highlighting of the
--- NonText markers (~) is ignored in this test.
+-- screen, the delimiter "|" moved to the right. Also, the highlighting of the
+-- NonText markers "~" is ignored in this test.
 --
--- Multiple expect:s will likely share a group of attribute sets to test.
--- Therefore these could be specified at the beginning of a test like this:
+-- Tests will often share a group of attribute sets to expect(). Those can be
+-- defined at the beginning of a test:
+--
 --    NonText = Screen.colors.Blue
 --    screen:set_default_attr_ids( {
 --      [1] = {reverse = true, bold = true},
 --      [2] = {reverse = true}
 --    })
 --    screen:set_default_attr_ignore( {{}, {bold=true, foreground=NonText}} )
--- These can be overridden for a specific expect expression, by passing
--- different sets as parameters.
 --
--- To help writing screen tests, there is a utility function
--- "screen:snapshot_util()", that can be placed in a test file at any point an
--- "expect(...)" should be. It will wait a short amount of time and then dump
--- the current state of the screen, in the form of an "expect(..)" expression
--- that would match it exactly. "snapshot_util" optionally also take the
--- transformation and ignore set as parameters, like expect, or uses the default
--- set. It will generate a larger attribute transformation set, if needed.
--- To generate a text-only test without highlight checks,
--- use `screen:snapshot_util({},true)`
+-- To help write screen tests, see Screen:snapshot_util().
+-- To debug screen tests, see Screen:redraw_debug().
 
 local helpers = require('test.functional.helpers')(nil)
 local request, run, uimeths = helpers.request, helpers.run, helpers.uimeths
@@ -126,7 +92,7 @@ end
 do
   local spawn, nvim_prog = helpers.spawn, helpers.nvim_prog
   local session = spawn({nvim_prog, '-u', 'NONE', '-i', 'NONE', '-N', '--embed'})
-  local status, rv = session:request('vim_get_color_map')
+  local status, rv = session:request('nvim_get_color_map')
   if not status then
     print('failed to get color map')
     os.exit(1)
@@ -170,9 +136,10 @@ function Screen.new(width, height)
     update_menu = false,
     visual_bell = false,
     suspended = false,
+    mode = 'normal',
+    options = {},
     _default_attr_ids = nil,
     _default_attr_ignore = nil,
-    _mode = 'normal',
     _mouse_enabled = true,
     _attrs = {},
     _cursor = {
@@ -205,16 +172,49 @@ end
 
 function Screen:try_resize(columns, rows)
   uimeths.try_resize(columns, rows)
+  -- Give ourselves a chance to _handle_resize, which requires using
+  -- self.sleep() (for the resize notification) rather than run()
+  self:sleep(0.1)
 end
 
-function Screen:expect(expected, attr_ids, attr_ignore, condition)
-  -- remove the last line and dedent
-  expected = dedent(expected:gsub('\n[ ]+$', ''))
+function Screen:set_option(option, value)
+  uimeths.set_option(option, value)
+end
+
+-- Asserts that `expected` eventually matches the screen state.
+--
+-- expected:    Expected screen state (string). Each line represents a screen
+--              row. Last character of each row (typically "|") is stripped.
+--              Common indentation is stripped.
+--              Used as `condition` if NOT a string; must be the ONLY arg then.
+-- attr_ids:    Expected text attributes. Screen rows are transformed according
+--              to this table, as follows: each substring S composed of
+--              characters having the same attributes will be substituted by
+--              "{K:S}", where K is a key in `attr_ids`. Any unexpected
+--              attributes in the final state are an error.
+-- attr_ignore: Ignored text attributes, or `true` to ignore all.
+-- condition:   Function asserting some arbitrary condition.
+-- any:         true: Succeed if `expected` matches ANY screen line(s).
+--              false (default): `expected` must match screen exactly.
+function Screen:expect(expected, attr_ids, attr_ignore, condition, any)
   local expected_rows = {}
-  for row in expected:gmatch('[^\n]+') do
-    -- the last character should be the screen delimiter
-    row = row:sub(1, #row - 1)
-    table.insert(expected_rows, row)
+  if type(expected) ~= "string" then
+    assert(not (attr_ids or attr_ignore or condition or any))
+    condition = expected
+    expected = nil
+  else
+    -- Remove the last line and dedent. Note that gsub returns more then one
+    -- value.
+    expected = dedent(expected:gsub('\n[ ]+$', ''), 0)
+    for row in expected:gmatch('[^\n]+') do
+      row = row:sub(1, #row - 1) -- Last char must be the screen delimiter.
+      table.insert(expected_rows, row)
+    end
+    if not any then
+      assert(self._height == #expected_rows,
+        "Expected screen state's row count(" .. #expected_rows
+        .. ') differs from configured height(' .. self._height .. ') of Screen.')
+    end
   end
   local ids = attr_ids or self._default_attr_ids
   local ignore = attr_ignore or self._default_attr_ignore
@@ -229,21 +229,36 @@ function Screen:expect(expected, attr_ids, attr_ignore, condition)
     for i = 1, self._height do
       actual_rows[i] = self:_row_repr(self._rows[i], ids, ignore)
     end
-    for i = 1, self._height do
-      if expected_rows[i] ~= actual_rows[i] then
-        local msg_expected_rows = {}
-        for j = 1, #expected_rows do
-          msg_expected_rows[j] = expected_rows[j]
-        end
-        msg_expected_rows[i] = '*' .. msg_expected_rows[i]
-        actual_rows[i] = '*' .. actual_rows[i]
+
+    if expected == nil then
+      return
+    elseif any then
+      -- Search for `expected` anywhere in the screen lines.
+      local actual_screen_str = table.concat(actual_rows, '\n')
+      if nil == string.find(actual_screen_str, expected) then
         return (
-          'Row ' .. tostring(i) .. ' didn\'t match.\n'
-          .. 'Expected:\n|' .. table.concat(msg_expected_rows, '|\n|') .. '|\n'
-          .. 'Actual:\n|' .. table.concat(actual_rows, '|\n|') .. '|\n\n' .. [[
+          'Failed to match any screen lines.\n'
+          .. 'Expected (anywhere): "' .. expected .. '"\n'
+          .. 'Actual:\n  |' .. table.concat(actual_rows, '|\n  |') .. '|\n\n')
+      end
+    else
+      -- `expected` must match the screen lines exactly.
+      for i = 1, self._height do
+        if expected_rows[i] ~= actual_rows[i] then
+          local msg_expected_rows = {}
+          for j = 1, #expected_rows do
+            msg_expected_rows[j] = expected_rows[j]
+          end
+          msg_expected_rows[i] = '*' .. msg_expected_rows[i]
+          actual_rows[i] = '*' .. actual_rows[i]
+          return (
+            'Row ' .. tostring(i) .. ' did not match.\n'
+            ..'Expected:\n  |'..table.concat(msg_expected_rows, '|\n  |')..'|\n'
+            ..'Actual:\n  |'..table.concat(actual_rows, '|\n  |')..'|\n\n'..[[
 To print the expect() call that would assert the current screen state, use
-screen:snaphot_util(). In case of non-deterministic failures, use
+screen:snapshot_util(). In case of non-deterministic failures, use
 screen:redraw_debug() to show all intermediate screen states.  ]])
+        end
       end
     end
   end)
@@ -275,18 +290,13 @@ function Screen:wait(check, timeout)
 
   if failure_after_success then
     print([[
-Warning: Screen changes have been received after the expected state was seen.
-This is probably due to an indeterminism in the test. Try adding
-`wait()` (or even a separate `screen:expect(...)`) at a point of possible
-indeterminism, typically in between a `feed()` or `execute()` which is non-
-synchronous, and a synchronous api call.
 
-Note that sometimes a `wait` can trigger redraws and consequently generate more
-indeterminism. If adding `wait` calls seems to increase the frequency of these
-messages, try removing every `wait` call in the test.
-
-If everything else fails, use Screen:redraw_debug to help investigate what is
-  causing the problem.
+Warning: Screen changes were received after the expected state. This indicates
+indeterminism in the test. Try adding wait() (or screen:expect(...)) between
+asynchronous (feed(), nvim_input()) and synchronous API calls.
+  - Use Screen:redraw_debug() to investigate the problem.
+  - wait() can trigger redraws and consequently generate more indeterminism.
+    In that case try removing every wait().
       ]])
     local tb = debug.traceback()
     local index = string.find(tb, '\n%s*%[C]')
@@ -308,10 +318,13 @@ function Screen:_redraw(updates)
     -- print(require('inspect')(update))
     local method = update[1]
     for i = 2, #update do
-      local handler = self['_handle_'..method]
+      local handler_name = '_handle_'..method
+      local handler = self[handler_name]
       if handler ~= nil then
         handler(self, unpack(update[i]))
       else
+        assert(self._on_event,
+          "Add Screen:"..handler_name.." or call Screen:set_on_event_handler")
         self._on_event(method, update[i])
       end
     end
@@ -340,6 +353,11 @@ function Screen:_handle_resize(width, height)
   self._scroll_region = {
     top = 1, bot = height, left = 1, right = width
   }
+end
+
+function Screen:_handle_mode_info_set(cursor_style_enabled, mode_info)
+  self._cursor_style_enabled = cursor_style_enabled
+  self._mode_info = mode_info
 end
 
 function Screen:_handle_clear()
@@ -373,9 +391,9 @@ function Screen:_handle_mouse_off()
   self._mouse_enabled = false
 end
 
-function Screen:_handle_mode_change(mode)
-  assert(mode == 'insert' or mode == 'replace' or mode == 'normal')
-  self._mode = mode
+function Screen:_handle_mode_change(mode, idx)
+  assert(mode == self._mode_info[idx+1].name)
+  self.mode = mode
 end
 
 function Screen:_handle_set_scroll_region(top, bot, left, right)
@@ -437,6 +455,9 @@ function Screen:_handle_visual_bell()
   self.visual_bell = true
 end
 
+function Screen:_handle_default_colors_set()
+end
+
 function Screen:_handle_update_fg(fg)
   self._fg = fg
 end
@@ -463,6 +484,10 @@ end
 
 function Screen:_handle_set_icon(icon)
   self.icon = icon
+end
+
+function Screen:_handle_option_set(name, value)
+  self.options[name] = value
 end
 
 function Screen:_clear_block(top, bot, left, right)
@@ -519,8 +544,12 @@ function Screen:_current_screen()
   return table.concat(rv, '\n')
 end
 
+-- Generates tests. Call it where Screen:expect() would be. Waits briefly, then
+-- dumps the current screen state in the form of Screen:expect().
+-- Use snapshot_util({},true) to generate a text-only (no attributes) test.
+--
+-- @see Screen:redraw_debug()
 function Screen:snapshot_util(attrs, ignore)
-  -- util to generate screen test
   self:sleep(250)
   self:print_snapshot(attrs, ignore)
 end
@@ -549,7 +578,7 @@ function Screen:print_snapshot(attrs, ignore)
   if attrs == nil then
     attrs = {}
     if self._default_attr_ids ~= nil then
-      for i, a in ipairs(self._default_attr_ids) do
+      for i, a in pairs(self._default_attr_ids) do
         attrs[i] = a
       end
     end
@@ -607,7 +636,7 @@ function Screen:_pprint_attrs(attrs)
     return table.concat(items, ", ")
 end
 
-function backward_find_meaningful(tbl, from)  -- luacheck: ignore
+local function backward_find_meaningful(tbl, from)  -- luacheck: no unused
   for i = from or #tbl, 1, -1 do
     if tbl[i] ~= ' ' then
       return i + 1

@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /// @file fileio.c
 ///
 /// Buffered reading/writing to a file. Unlike fileio.c this is not dealing with
@@ -23,6 +26,7 @@
 #include "nvim/globals.h"
 #include "nvim/rbuffer.h"
 #include "nvim/macros.h"
+#include "nvim/message.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/fileio.c.generated.h"
@@ -35,9 +39,9 @@
 /// @param[in]  fname  File name to open.
 /// @param[in]  flags  Flags, @see FileOpenFlags. Currently reading from and
 ///                    writing to the file at once is not supported, so either
-///                    FILE_WRITE_ONLY or FILE_READ_ONLY is required.
+///                    kFileWriteOnly or kFileReadOnly is required.
 /// @param[in]  mode  Permissions for the newly created file (ignored if flags
-///                   does not have FILE_CREATE\*).
+///                   does not have kFileCreate\*).
 ///
 /// @return Error code (@see os_strerror()) or 0.
 int file_open(FileDescriptor *const ret_fp, const char *const fname,
@@ -45,8 +49,8 @@ int file_open(FileDescriptor *const ret_fp, const char *const fname,
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
 {
   int os_open_flags = 0;
-  int fd;
   TriState wr = kNone;
+  // -V:FLAG:501
 #define FLAG(flags, flag, fcntl_flags, wrval, cond) \
   do { \
     if (flags & flag) { \
@@ -62,19 +66,42 @@ int file_open(FileDescriptor *const ret_fp, const char *const fname,
   FLAG(flags, kFileCreate, O_CREAT|O_WRONLY, kTrue, !(flags & kFileCreateOnly));
   FLAG(flags, kFileTruncate, O_TRUNC|O_WRONLY, kTrue,
        !(flags & kFileCreateOnly));
+  FLAG(flags, kFileAppend, O_APPEND|O_WRONLY, kTrue,
+       !(flags & kFileCreateOnly));
   FLAG(flags, kFileReadOnly, O_RDONLY, kFalse, wr != kTrue);
 #ifdef O_NOFOLLOW
   FLAG(flags, kFileNoSymlink, O_NOFOLLOW, kNone, true);
 #endif
 #undef FLAG
+  // wr is used for kFileReadOnly flag, but on
+  // QB:neovim-qb-slave-ubuntu-12-04-64bit it still errors out with
+  // `error: variable ‘wr’ set but not used [-Werror=unused-but-set-variable]`
+  (void)wr;
 
-  fd = os_open(fname, os_open_flags, mode);
+  const int fd = os_open(fname, os_open_flags, mode);
 
   if (fd < 0) {
     return fd;
   }
+  return file_open_fd(ret_fp, fd, (wr == kTrue));
+}
 
-  ret_fp->wr = (wr == kTrue);
+/// Wrap file descriptor with FileDescriptor structure
+///
+/// @warning File descriptor wrapped like this must not be accessed by other
+///          means.
+///
+/// @param[out]  ret_fp  Address where information needed for reading from or
+///                      writing to a file is saved
+/// @param[in]  fd  File descriptor to wrap.
+/// @param[in]  wr  True if fd is opened for writing only, false if it is read
+///                 only.
+///
+/// @return Error code (@see os_strerror()) or 0. Currently always returns 0.
+int file_open_fd(FileDescriptor *const ret_fp, const int fd, const bool wr)
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  ret_fp->wr = wr;
   ret_fp->fd = fd;
   ret_fp->eof = false;
   ret_fp->rv = rbuffer_new(kRWBufferSize);
@@ -93,12 +120,12 @@ int file_open(FileDescriptor *const ret_fp, const char *const fname,
 /// @param[in]  fname  File name to open.
 /// @param[in]  flags  Flags, @see FileOpenFlags.
 /// @param[in]  mode  Permissions for the newly created file (ignored if flags
-///                   does not have FILE_CREATE\*).
+///                   does not have kFileCreate\*).
 ///
 /// @return [allocated] Opened file or NULL in case of error.
 FileDescriptor *file_open_new(int *const error, const char *const fname,
                               const int flags, const int mode)
-  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_MALLOC FUNC_ATTR_WARN_UNUSED_RESULT
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
 {
   FileDescriptor *const fp = xmalloc(sizeof(*fp));
   if ((*error = file_open(fp, fname, flags, mode)) != 0) {
@@ -108,35 +135,76 @@ FileDescriptor *file_open_new(int *const error, const char *const fname,
   return fp;
 }
 
+/// Like file_open_fd(), but allocate and return ret_fp
+///
+/// @param[out]  error  Error code, @see os_strerror(). Is set to zero on
+///                     success.
+/// @param[in]  fd  File descriptor to wrap.
+/// @param[in]  wr  True if fd is opened for writing only, false if it is read
+///                 only.
+///
+/// @return [allocated] Opened file or NULL in case of error.
+FileDescriptor *file_open_fd_new(int *const error, const int fd, const bool wr)
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_MALLOC FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  FileDescriptor *const fp = xmalloc(sizeof(*fp));
+  if ((*error = file_open_fd(fp, fd, wr)) != 0) {
+    xfree(fp);
+    return NULL;
+  }
+  return fp;
+}
+
 /// Close file and free its buffer
 ///
 /// @param[in,out]  fp  File to close.
+/// @param[in]  do_fsync  If true, use fsync() to write changes to disk.
 ///
 /// @return 0 or error code.
-int file_close(FileDescriptor *const fp) FUNC_ATTR_NONNULL_ALL
+int file_close(FileDescriptor *const fp, const bool do_fsync)
+  FUNC_ATTR_NONNULL_ALL
 {
-  const int error = file_fsync(fp);
-  const int error2 = os_close(fp->fd);
+  const int flush_error = (do_fsync ? file_fsync(fp) : file_flush(fp));
+  const int close_error = os_close(fp->fd);
   rbuffer_free(fp->rv);
-  if (error2 != 0) {
-    return error2;
+  if (close_error != 0) {
+    return close_error;
   }
-  return error;
+  return flush_error;
 }
 
 /// Close and free file obtained using file_open_new()
 ///
 /// @param[in,out]  fp  File to close.
+/// @param[in]  do_fsync  If true, use fsync() to write changes to disk.
 ///
 /// @return 0 or error code.
-int file_free(FileDescriptor *const fp) FUNC_ATTR_NONNULL_ALL
+int file_free(FileDescriptor *const fp, const bool do_fsync)
+  FUNC_ATTR_NONNULL_ALL
 {
-  const int ret = file_close(fp);
+  const int ret = file_close(fp, do_fsync);
   xfree(fp);
   return ret;
 }
 
 /// Flush file modifications to disk
+///
+/// @param[in,out]  fp  File to work with.
+///
+/// @return 0 or error code.
+int file_flush(FileDescriptor *const fp)
+  FUNC_ATTR_NONNULL_ALL
+{
+  if (!fp->wr) {
+    return 0;
+  }
+  file_rb_write_full_cb(fp->rv, fp);
+  const int error = fp->_error;
+  fp->_error = 0;
+  return error;
+}
+
+/// Flush file modifications to disk and run fsync()
 ///
 /// @param[in,out]  fp  File to work with.
 ///
@@ -147,13 +215,15 @@ int file_fsync(FileDescriptor *const fp)
   if (!fp->wr) {
     return 0;
   }
-  file_rb_write_full_cb(fp->rv, fp);
-  if (fp->_error != 0) {
-    const int error = fp->_error;
-    fp->_error = 0;
-    return error;
+  const int flush_error = file_flush(fp);
+  if (flush_error != 0) {
+    return flush_error;
   }
-  return os_fsync(fp->fd);
+  const int fsync_error = os_fsync(fp->fd);
+  if (fsync_error != UV_EINVAL && fsync_error != UV_EROFS) {
+    return fsync_error;
+  }
+  return 0;
 }
 
 /// Buffer used for writing
@@ -315,4 +385,33 @@ ptrdiff_t file_skip(FileDescriptor *const fp, const size_t size)
   } while (read_bytes < size && !file_eof(fp));
 
   return (ptrdiff_t)read_bytes;
+}
+
+/// Msgpack callback for writing to a file
+///
+/// @param  data  File to write to.
+/// @param[in]  buf  Data to write.
+/// @param[in]  len  Length of the data to write.
+///
+/// @return 0 in case of success, -1 in case of error.
+int msgpack_file_write(void *data, const char *buf, size_t len)
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  assert(len < PTRDIFF_MAX);
+  const ptrdiff_t written_bytes = file_write((FileDescriptor *)data, buf, len);
+  if (written_bytes < 0) {
+    return msgpack_file_write_error((int)written_bytes);
+  }
+  return 0;
+}
+
+/// Print error which occurs when failing to write msgpack data
+///
+/// @param[in]  error  Error code of the error to print.
+///
+/// @return -1 (error return for msgpack_packer callbacks).
+int msgpack_file_write_error(const int error)
+{
+  emsgf(_("E5420: Failed to write to file: %s"), os_strerror(error));
+  return -1;
 }

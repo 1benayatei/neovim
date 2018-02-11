@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include <assert.h>
 #include <string.h>
 #include <stdbool.h>
@@ -20,6 +23,7 @@
 #include "nvim/main.h"
 #include "nvim/misc1.h"
 #include "nvim/state.h"
+#include "nvim/msgpack_rpc/channel.h"
 
 #define READ_BUFFER_SIZE 0xfff
 #define INPUT_BUFFER_SIZE (READ_BUFFER_SIZE * 4)
@@ -33,14 +37,13 @@ typedef enum {
 static Stream read_stream = {.closed = true};
 static RBuffer *input_buffer = NULL;
 static bool input_eof = false;
-static int global_fd = 0;
+static int global_fd = -1;
 static int events_enabled = 0;
+static bool blocking = false;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/input.c.generated.h"
 #endif
-// Helper function used to push bytes from the 'event' key sequence partially
-// between calls to os_inchar when maxlen < 3
 
 void input_init(void)
 {
@@ -146,9 +149,15 @@ bool os_char_avail(void)
 // Check for CTRL-C typed by reading all available characters.
 void os_breakcheck(void)
 {
+  int save_us = updating_screen;
+  // We do not want screen_resize() to redraw here.
+  updating_screen++;
+
   if (!got_int) {
     loop_poll_events(&main_loop, 0);
   }
+
+  updating_screen = save_us;
 }
 
 void input_enable_events(void)
@@ -172,12 +181,14 @@ bool os_isatty(int fd)
 
 size_t input_enqueue(String keys)
 {
-  char *ptr = keys.data, *end = ptr + keys.size;
+  char *ptr = keys.data;
+  char *end = ptr + keys.size;
 
   while (rbuffer_space(input_buffer) >= 6 && ptr < end) {
     uint8_t buf[6] = { 0 };
-    unsigned int new_size = trans_special((const uint8_t **)&ptr, keys.size,
-                                          buf, true);
+    unsigned int new_size
+        = trans_special((const uint8_t **)&ptr, (size_t)(end - ptr), buf, true,
+                        false);
 
     if (new_size) {
       new_size = handle_mouse_event(&ptr, buf, new_size);
@@ -187,8 +198,7 @@ size_t input_enqueue(String keys)
 
     if (*ptr == '<') {
       char *old_ptr = ptr;
-      // Invalid or incomplete key sequence, skip until the next '>' or until
-      // *end
+      // Invalid or incomplete key sequence, skip until the next '>' or *end.
       do {
         ptr++;
       } while (ptr < end && *ptr != '>');
@@ -319,13 +329,25 @@ static unsigned int handle_mouse_event(char **ptr, uint8_t *buf,
   return bufsize;
 }
 
+/// @return true if the main loop is blocked and waiting for input.
+bool input_blocking(void)
+{
+  return blocking;
+}
+
 static bool input_poll(int ms)
 {
   if (do_profiling == PROF_YES && ms) {
     prof_inchar_enter();
   }
 
+  if ((ms == - 1 || ms > 0) && !events_enabled && !input_eof) {
+    // The pending input provoked a blocking wait. Do special events now. #6247
+    blocking = true;
+    multiqueue_process_events(ch_before_blocking_events);
+  }
   LOOP_PROCESS_EVENTS_UNTIL(&main_loop, NULL, ms, input_ready() || input_eof);
+  blocking = false;
 
   if (do_profiling == PROF_YES && ms) {
     prof_inchar_exit();
@@ -389,6 +411,8 @@ static void process_interrupts(void)
   }
 }
 
+// Helper function used to push bytes from the 'event' key sequence partially
+// between calls to os_inchar when maxlen < 3
 static int push_event_key(uint8_t *buf, int maxlen)
 {
   static const uint8_t key[3] = { K_SPECIAL, KS_EXTRA, KE_EVENT };

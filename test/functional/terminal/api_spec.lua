@@ -12,7 +12,7 @@ describe('api', function()
     helpers.clear()
     os.remove(socket_name)
     screen = child_session.screen_setup(0, '["'..helpers.nvim_prog
-      ..'", "-u", "NONE", "-i", "NONE", "--cmd", "set noswapfile"]')
+      ..'", "-u", "NONE", "-i", "NONE", "--cmd", "'..helpers.nvim_set..'"]')
   end)
   after_each(function()
     os.remove(socket_name)
@@ -22,13 +22,13 @@ describe('api', function()
     -- Start the socket from the child nvim.
     child_session.feed_data(":echo serverstart('"..socket_name.."')\n")
 
-    -- Wait for socket creation by abusing expect().
+    -- Wait for socket creation.
     screen:expect([[
       {1: }                                                 |
       {4:~                                                 }|
       {4:~                                                 }|
       {4:~                                                 }|
-      {5:[No Name]                                         }|
+      {4:~                                                 }|
       ]]..socket_name..[[                         |
       {3:-- TERMINAL --}                                    |
     ]])
@@ -37,6 +37,16 @@ describe('api', function()
     local socket_session2 = helpers.connect(socket_name)
 
     child_session.feed_data("i[tui] insert-mode")
+    -- Wait for stdin to be processed.
+    screen:expect([[
+      [tui] insert-mode{1: }                                |
+      {4:~                                                 }|
+      {4:~                                                 }|
+      {4:~                                                 }|
+      {4:~                                                 }|
+      {3:-- INSERT --}                                      |
+      {3:-- TERMINAL --}                                    |
+    ]])
 
     ok(socket_session1:request("nvim_ui_attach", 42, 6, {rgb=true}))
     ok(socket_session2:request("nvim_ui_attach", 25, 30, {rgb=true}))
@@ -49,7 +59,7 @@ describe('api', function()
       [socket 1] this is more t{4:                         }|
       han 25 columns           {4:                         }|
       [socket 2] input{1: }        {4:                         }|
-      {5:[No Name] [+]                                     }|
+      {4:~                                                 }|
       {3:-- INSERT --}                                      |
       {3:-- TERMINAL --}                                    |
     ]])

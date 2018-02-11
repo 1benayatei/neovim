@@ -12,6 +12,11 @@ check_type_size("size_t" SIZEOF_SIZE_T)
 check_type_size("long long" SIZEOF_LONG_LONG)
 check_type_size("void *" SIZEOF_VOID_PTR)
 
+if (CMAKE_HOST_SYSTEM_VERSION MATCHES ".*-Microsoft")
+  # Windows Subsystem for Linux
+  set(HAVE_WSL 1)
+endif()
+
 check_symbol_exists(_NSGetEnviron crt_externs.h HAVE__NSGETENVIRON)
 
 # Headers
@@ -26,6 +31,7 @@ if(NOT HAVE_SYS_WAIT_H AND UNIX)
   message(SEND_ERROR "header sys/wait.h is required for Unix")
 endif()
 check_include_files(sys/utsname.h HAVE_SYS_UTSNAME_H)
+check_include_files(termios.h HAVE_TERMIOS_H)
 check_include_files(utime.h HAVE_UTIME_H)
 check_include_files(sys/uio.h HAVE_SYS_UIO_H)
 
@@ -142,12 +148,16 @@ configure_file (
 find_program(WHOAMI_PROG whoami)
 find_program(HOSTNAME_PROG hostname)
 
-if (NOT DEFINED USERNAME AND EXISTS ${WHOAMI_PROG})
+if (DEFINED ENV{USERNAME})
+  set(USERNAME $ENV{USERNAME})
+elseif (NOT DEFINED USERNAME AND EXISTS ${WHOAMI_PROG})
   execute_process(COMMAND ${WHOAMI_PROG}
     OUTPUT_STRIP_TRAILING_WHITESPACE
     OUTPUT_VARIABLE USERNAME)
 endif()
-if (EXISTS ${HOSTNAME_PROG})
+if (DEFINED ENV{HOSTNAME})
+  set(HOSTNAME $ENV{HOSTNAME})
+elseif (EXISTS ${HOSTNAME_PROG})
   execute_process(COMMAND ${HOSTNAME_PROG}
     OUTPUT_STRIP_TRAILING_WHITESPACE
     OUTPUT_VARIABLE HOSTNAME)

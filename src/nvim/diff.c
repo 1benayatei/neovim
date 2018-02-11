@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /// @file diff.c
 ///
 /// Code for diff'ing two, three or four buffers.
@@ -129,7 +132,21 @@ void diff_buf_add(buf_T *buf)
     }
   }
 
-  EMSGN(_("E96: Can not diff more than %" PRId64 " buffers"), DB_COUNT);
+  EMSGN(_("E96: Cannot diff more than %" PRId64 " buffers"), DB_COUNT);
+}
+
+///
+/// Remove all buffers to make diffs for.
+///
+static void diff_buf_clear(void)
+{
+  for (int i = 0; i < DB_COUNT; i++) {
+    if (curtab->tp_diffbuf[i] != NULL) {
+      curtab->tp_diffbuf[i] = NULL;
+      curtab->tp_diff_invalid = true;
+      diff_redraw(true);
+    }
+  }
 }
 
 /// Find buffer "buf" in the list of diff buffers for the current tab page.
@@ -838,12 +855,13 @@ void ex_diffpatch(exarg_T *eap)
 {
   char_u *buf = NULL;
   win_T *old_curwin = curwin;
-  char_u *newname = NULL; // name of patched file buffer
+  char_u *newname = NULL;  // name of patched file buffer
+  char_u *esc_name = NULL;
 
 #ifdef UNIX
   char_u dirbuf[MAXPATHL];
   char_u *fullname = NULL;
-#endif  // ifdef UNIX
+#endif
   // We need two temp file names.
   // Name of original temp file.
   char_u *tmp_orig = vim_tempname();
@@ -863,21 +881,21 @@ void ex_diffpatch(exarg_T *eap)
 
 #ifdef UNIX
   // Get the absolute path of the patchfile, changing directory below.
-  fullname = (char_u *)FullName_save((char *)eap->arg, FALSE);
-#endif  // ifdef UNIX
+  fullname = (char_u *)FullName_save((char *)eap->arg, false);
+#endif
 
+  esc_name = vim_strsave_shellescape(
 #ifdef UNIX
-  size_t buflen = STRLEN(tmp_orig)
-      + (fullname != NULL ? STRLEN(fullname) : STRLEN(eap->arg))
-      + STRLEN(tmp_new) + 16;
-#else
-  size_t buflen = STRLEN(tmp_orig) + (STRLEN(eap->arg)) + STRLEN(tmp_new) + 16;
-#endif  // ifdef UNIX
-
+                                     fullname != NULL ? fullname :
+#endif
+                                     eap->arg, true, true);
+  if (esc_name == NULL) {
+    goto theend;
+  }
+  size_t buflen = STRLEN(tmp_orig) + STRLEN(esc_name) + STRLEN(tmp_new) + 16;
   buf = xmalloc(buflen);
 
 #ifdef UNIX
-
   // Temporarily chdir to /tmp, to avoid patching files in the current
   // directory when the patch file contains more than one patch.  When we
   // have our own temp dir use that instead, it will be cleaned up when we
@@ -894,26 +912,21 @@ void ex_diffpatch(exarg_T *eap)
     os_chdir(tempdir);
     shorten_fnames(TRUE);
   }
-#endif  // ifdef UNIX
+#endif
 
   if (*p_pex != NUL) {
     // Use 'patchexpr' to generate the new file.
 #ifdef UNIX
-    eval_patch((char *) tmp_orig,
-               (char *) (fullname != NULL ? fullname : eap->arg),
-               (char *) tmp_new);
+    eval_patch((char *)tmp_orig,
+               (char *)(fullname != NULL ? fullname : eap->arg),
+               (char *)tmp_new);
 #else
-    eval_patch((char *) tmp_orig, (char *) eap->arg, (char *) tmp_new);
-#endif  // ifdef UNIX
+    eval_patch((char *)tmp_orig, (char *)eap->arg, (char *)tmp_new);
+#endif
   } else {
     // Build the patch command and execute it. Ignore errors.
-#ifdef UNIX
-    vim_snprintf((char *)buf, buflen, "patch -o %s %s < \"%s\"",
-                 tmp_new, tmp_orig, fullname != NULL ? fullname : eap->arg);
-#else
-    vim_snprintf((char *)buf, buflen, "patch -o %s %s < \"%s\"",
-                 tmp_new, tmp_orig, eap->arg);
-#endif  // ifdef UNIX
+    vim_snprintf((char *)buf, buflen, "patch -o %s %s < %s",
+                 tmp_new, tmp_orig, esc_name);
     block_autocmds();  // Avoid ShellCmdPost stuff
     (void)call_shell(buf, kShellOptFilter, NULL);
     unblock_autocmds();
@@ -926,10 +939,7 @@ void ex_diffpatch(exarg_T *eap)
     }
     shorten_fnames(TRUE);
   }
-#endif  // ifdef UNIX
-
-  // patch probably has written over the screen
-  redraw_later(CLEAR);
+#endif
 
   // Delete any .orig or .rej file created.
   STRCPY(buf, tmp_new);
@@ -995,7 +1005,8 @@ theend:
   xfree(buf);
 #ifdef UNIX
   xfree(fullname);
-#endif  // ifdef UNIX
+#endif
+  xfree(esc_name);
 }
 
 /// Split the window and edit another file, setting options to show the diffs.
@@ -1004,7 +1015,12 @@ theend:
 void ex_diffsplit(exarg_T *eap)
 {
   win_T *old_curwin = curwin;
-  buf_T *old_curbuf = curbuf;
+  bufref_T old_curbuf;
+  set_bufref(&old_curbuf, curbuf);
+
+  // Need to compute w_fraction when no redraw happened yet.
+  validate_cursor();
+  set_fraction(curwin);
 
   // don't use a new tab page, each tab page has its own diffs
   cmdmod.tab = 0;
@@ -1022,15 +1038,15 @@ void ex_diffsplit(exarg_T *eap)
       if (win_valid(old_curwin)) {
         diff_win_options(old_curwin, true);
 
-        if (buf_valid(old_curbuf)) {
+        if (bufref_valid(&old_curbuf)) {
           // Move the cursor position to that of the old window.
           curwin->w_cursor.lnum = diff_get_corresponding_line(
-              old_curbuf,
-              old_curwin->w_cursor.lnum,
-              curbuf,
-              curwin->w_cursor.lnum);
+              old_curbuf.br_buf, old_curwin->w_cursor.lnum);
         }
       }
+      // Now that lines are folded scroll to show the cursor at the same
+      // relative position.
+      scroll_to_fraction(curwin, curwin->w_height);
     }
   }
 }
@@ -1068,8 +1084,8 @@ void diff_win_options(win_T *wp, int addbuf)
   if (!wp->w_p_diff) {
     wp->w_p_wrap_save = wp->w_p_wrap;
   }
-  wp->w_p_wrap = FALSE;
-  curwin = wp;
+  wp->w_p_wrap = false;
+  curwin = wp;  // -V519
   curbuf = curwin->w_buffer;
 
   if (!wp->w_p_diff) {
@@ -1139,7 +1155,9 @@ void ex_diffoff(exarg_T *eap)
         }
 
         free_string_option(wp->w_p_fdm);
-        wp->w_p_fdm = vim_strsave(wp->w_p_fdm_save);
+        wp->w_p_fdm = vim_strsave(*wp->w_p_fdm_save
+                                  ? wp->w_p_fdm_save
+                                  : (char_u *)"manual");
         if (wp->w_p_fdc == diff_foldcolumn) {
           wp->w_p_fdc = wp->w_p_fdc_save;
         }
@@ -1153,15 +1171,23 @@ void ex_diffoff(exarg_T *eap)
         }
 
         foldUpdateAll(wp);
-
-        // make sure topline is not halfway through a fold
-        changed_window_setting_win(wp);
       }
+      // remove filler lines
+      wp->w_topfill = 0;
+
+      // make sure topline is not halfway a fold and cursor is
+      // invalidated
+      changed_window_setting_win(wp);
 
       // Note: 'sbo' is not restored, it's a global option.
       diff_buf_adjust(wp);
     }
     diffwin |= wp->w_p_diff;
+  }
+
+  // Also remove hidden buffers from the list.
+  if (eap->forceit) {
+    diff_buf_clear();
   }
 
   // Remove "hor" from from 'scrollopt' if there are no diff windows left.
@@ -1575,7 +1601,7 @@ static int diff_cmp(char_u *s1, char_u *s2)
   }
 
   if ((diff_flags & DIFF_ICASE) && !(diff_flags & DIFF_IWHITE)) {
-    return mb_stricmp(s1, s2);
+    return mb_stricmp((const char *)s1, (const char *)s2);
   }
 
   // Ignore white space changes and possibly ignore case.
@@ -2241,7 +2267,7 @@ void ex_diffgetput(exarg_T *eap)
         }
       }
 
-      buf_empty = bufempty();
+      buf_empty = BUFEMPTY();
       added = 0;
 
       for (i = 0; i < count; ++i) {
@@ -2297,7 +2323,7 @@ void ex_diffgetput(exarg_T *eap)
 
       // Adjust marks.  This will change the following entries!
       if (added != 0) {
-        mark_adjust(lnum, lnum + count - 1, (long)MAXLNUM, (long)added);
+        mark_adjust(lnum, lnum + count - 1, (long)MAXLNUM, (long)added, false);
         if (curwin->w_cursor.lnum >= lnum) {
           // Adjust the cursor position if it's in/after the changed
           // lines.
@@ -2449,25 +2475,17 @@ int diff_move_to(int dir, long count)
   return OK;
 }
 
-/// Finds the corresponding line in a diff.
-///
-/// @param buf1
-/// @param lnum1
-/// @param buf2
-/// @param lnum3
-///
-/// @return The corresponding line.
-linenr_T diff_get_corresponding_line(buf_T *buf1, linenr_T lnum1, buf_T *buf2,
-                                     linenr_T lnum3)
+/// Return the line number in the current window that is closest to "lnum1" in
+/// "buf1" in diff mode.
+static linenr_T diff_get_corresponding_line_int(buf_T *buf1, linenr_T lnum1)
 {
   int idx1;
   int idx2;
   diff_T *dp;
   int baseline = 0;
-  linenr_T lnum2;
 
   idx1 = diff_buf_idx(buf1);
-  idx2 = diff_buf_idx(buf2);
+  idx2 = diff_buf_idx(curbuf);
 
   if ((idx1 == DB_COUNT)
       || (idx2 == DB_COUNT)
@@ -2487,15 +2505,9 @@ linenr_T diff_get_corresponding_line(buf_T *buf1, linenr_T lnum1, buf_T *buf2,
 
   for (dp = curtab->tp_first_diff; dp != NULL; dp = dp->df_next) {
     if (dp->df_lnum[idx1] > lnum1) {
-      lnum2 = lnum1 - baseline;
-
-      // don't end up past the end of the file
-      if (lnum2 > buf2->b_ml.ml_line_count) {
-        lnum2 = buf2->b_ml.ml_line_count;
-      }
-
-      return lnum2;
-    } else if ((dp->df_lnum[idx1] + dp->df_count[idx1]) > lnum1) {
+      return lnum1 - baseline;
+    }
+    if ((dp->df_lnum[idx1] + dp->df_count[idx1]) > lnum1) {
       // Inside the diffblock
       baseline = lnum1 - dp->df_lnum[idx1];
 
@@ -2504,30 +2516,42 @@ linenr_T diff_get_corresponding_line(buf_T *buf1, linenr_T lnum1, buf_T *buf2,
       }
 
       return dp->df_lnum[idx2] + baseline;
-    } else if ((dp->df_lnum[idx1] == lnum1)
-               && (dp->df_count[idx1] == 0)
-               && (dp->df_lnum[idx2] <= lnum3)
-               && ((dp->df_lnum[idx2] + dp->df_count[idx2]) > lnum3)) {
+    }
+    if ((dp->df_lnum[idx1] == lnum1)
+        && (dp->df_count[idx1] == 0)
+        && (dp->df_lnum[idx2] <= curwin->w_cursor.lnum)
+        && ((dp->df_lnum[idx2] + dp->df_count[idx2])
+            > curwin->w_cursor.lnum)) {
       // Special case: if the cursor is just after a zero-count
       // block (i.e. all filler) and the target cursor is already
       // inside the corresponding block, leave the target cursor
       // unmoved. This makes repeated CTRL-W W operations work
       // as expected.
-      return lnum3;
+      return curwin->w_cursor.lnum;
     }
     baseline = (dp->df_lnum[idx1] + dp->df_count[idx1])
-               - (dp->df_lnum[idx2] + dp->df_count[idx2]);
+                - (dp->df_lnum[idx2] + dp->df_count[idx2]);
   }
 
   // If we get here then the cursor is after the last diff
-  lnum2 = lnum1 - baseline;
+  return lnum1 - baseline;
+}
+
+/// Finds the corresponding line in a diff.
+///
+/// @param buf1
+/// @param lnum1
+///
+/// @return The corresponding line.
+linenr_T diff_get_corresponding_line(buf_T *buf1, linenr_T lnum1)
+{
+  linenr_T lnum = diff_get_corresponding_line_int(buf1, lnum1);
 
   // don't end up past the end of the file
-  if (lnum2 > buf2->b_ml.ml_line_count) {
-    lnum2 = buf2->b_ml.ml_line_count;
+  if (lnum > curbuf->b_ml.ml_line_count) {
+    return curbuf->b_ml.ml_line_count;
   }
-
-  return lnum2;
+  return lnum;
 }
 
 /// For line "lnum" in the current window find the equivalent lnum in window

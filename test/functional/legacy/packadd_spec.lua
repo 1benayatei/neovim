@@ -1,7 +1,7 @@
 -- Tests for 'packpath' and :packadd
 
 local helpers = require('test.functional.helpers')(after_each)
-local clear, source, execute = helpers.clear, helpers.source, helpers.execute
+local clear, source, command = helpers.clear, helpers.source, helpers.command
 local call, eq, nvim = helpers.call, helpers.eq, helpers.meths
 local feed = helpers.feed
 
@@ -27,7 +27,7 @@ describe('packadd', function()
       endfunc
 
       func Test_packadd()
-        call mkdir(s:plugdir . '/plugin', 'p')
+        call mkdir(s:plugdir . '/plugin/also', 'p')
         call mkdir(s:plugdir . '/ftdetect', 'p')
         call mkdir(s:plugdir . '/after', 'p')
         set rtp&
@@ -38,6 +38,10 @@ describe('packadd', function()
         call setline(1, 'let g:plugin_works = 42')
         wq
 
+        exe 'split ' . s:plugdir . '/plugin/also/loaded.vim'
+        call setline(1, 'let g:plugin_also_works = 77')
+        wq
+
         exe 'split ' . s:plugdir . '/ftdetect/test.vim'
         call setline(1, 'let g:ftdetect_works = 17')
         wq
@@ -45,6 +49,7 @@ describe('packadd', function()
         packadd mytest
 
         call assert_true(42, g:plugin_works)
+        call assert_equal(77, g:plugin_also_works)
         call assert_true(17, g:ftdetect_works)
         call assert_true(len(&rtp) > len(rtp))
         call assert_true(&rtp =~ (s:plugdir . '\($\|,\)'))
@@ -76,6 +81,41 @@ describe('packadd', function()
         let new_rtp = &rtp
         packadd! mytest
         call assert_equal(new_rtp, &rtp)
+      endfunc
+
+      func Test_packadd_symlink_dir()
+        if !has('unix')
+          return
+        endif
+        let top2_dir = s:topdir . '/Xdir2'
+        let real_dir = s:topdir . '/Xsym'
+        call mkdir(real_dir, 'p')
+        exec "silent! !ln -s Xsym" top2_dir
+        let &rtp = top2_dir . ',' . top2_dir . '/after'
+        let &packpath = &rtp
+
+        let s:plugdir = top2_dir . '/pack/mine/opt/mytest'
+        call mkdir(s:plugdir . '/plugin', 'p')
+
+        exe 'split ' . s:plugdir . '/plugin/test.vim'
+        call setline(1, 'let g:plugin_works = 44')
+        wq
+        let g:plugin_works = 0
+
+        packadd mytest
+
+        " Must have been inserted in the middle, not at the end
+        call assert_true(&rtp =~ '/pack/mine/opt/mytest,')
+        call assert_equal(44, g:plugin_works)
+
+        " No change when doing it again.
+        let rtp_before = &rtp
+        packadd mytest
+        call assert_equal(rtp_before, &rtp)
+
+        set rtp&
+        let rtp = &rtp
+        exec "silent !rm" top2_dir
       endfunc
 
       func Test_packloadall()
@@ -132,9 +172,9 @@ describe('packadd', function()
 
         helptags ALL
 
-        let tags1 = readfile(docdir1 . '/tags') 
+        let tags1 = readfile(docdir1 . '/tags')
         call assert_true(tags1[0] =~ 'look-here')
-        let tags2 = readfile(docdir2 . '/tags') 
+        let tags2 = readfile(docdir2 . '/tags')
         call assert_true(tags2[0] =~ 'look-away')
       endfunc
 
@@ -222,6 +262,11 @@ describe('packadd', function()
     expected_empty()
   end)
 
+  it('works with symlinks', function()
+    call('Test_packadd_symlink_dir')
+    expected_empty()
+  end)
+
   it('works with :packloadall', function()
     call('Test_packloadall')
     expected_empty()
@@ -258,12 +303,12 @@ describe('packadd', function()
         [2] = {bold = true, reverse = true}
       })
 
-      execute([[let optdir1 = &packpath . '/pack/mine/opt']])
-      execute([[let optdir2 = &packpath . '/pack/candidate/opt']])
-      execute([[call mkdir(optdir1 . '/pluginA', 'p')]])
-      execute([[call mkdir(optdir1 . '/pluginC', 'p')]])
-      execute([[call mkdir(optdir2 . '/pluginB', 'p')]])
-      execute([[call mkdir(optdir2 . '/pluginC', 'p')]])
+      command([[let optdir1 = &packpath . '/pack/mine/opt']])
+      command([[let optdir2 = &packpath . '/pack/candidate/opt']])
+      command([[call mkdir(optdir1 . '/pluginA', 'p')]])
+      command([[call mkdir(optdir1 . '/pluginC', 'p')]])
+      command([[call mkdir(optdir2 . '/pluginB', 'p')]])
+      command([[call mkdir(optdir2 . '/pluginC', 'p')]])
     end)
 
     it('works', function()

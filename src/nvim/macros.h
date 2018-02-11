@@ -19,41 +19,27 @@
 # define MAX(X, Y) ((X) > (Y) ? (X) : (Y))
 #endif
 
-/*
- * Position comparisons
- */
-# define lt(a, b) (((a).lnum != (b).lnum) \
-                   ? (a).lnum < (b).lnum \
-                   : (a).col != (b).col \
-                   ? (a).col < (b).col \
-                   : (a).coladd < (b).coladd)
-# define ltp(a, b) (((a)->lnum != (b)->lnum) \
-                    ? (a)->lnum < (b)->lnum \
-                    : (a)->col != (b)->col \
-                    ? (a)->col < (b)->col \
-                    : (a)->coladd < (b)->coladd)
-# define equalpos(a, b) (((a).lnum == (b).lnum) && ((a).col == (b).col) && \
-                         ((a).coladd == (b).coladd))
-# define clearpos(a) {(a)->lnum = 0; (a)->col = 0; (a)->coladd = 0; }
+/// String with length
+///
+/// For use in functions which accept (char *s, size_t len) pair in arguments.
+///
+/// @param[in]  s  Static string.
+///
+/// @return `s, sizeof(s) - 1`
+#define S_LEN(s) (s), (sizeof(s) - 1)
 
-#define ltoreq(a, b) (lt(a, b) || equalpos(a, b))
+/// LINEEMPTY() - return TRUE if the line is empty
+#define LINEEMPTY(p) (*ml_get(p) == NUL)
 
-/*
- * lineempty() - return TRUE if the line is empty
- */
-#define lineempty(p) (*ml_get(p) == NUL)
-
-/*
- * bufempty() - return TRUE if the current buffer is empty
- */
-#define bufempty() (curbuf->b_ml.ml_line_count == 1 && *ml_get((linenr_T)1) == \
+/// BUFEMPTY() - return TRUE if the current buffer is empty
+#define BUFEMPTY() (curbuf->b_ml.ml_line_count == 1 && *ml_get((linenr_T)1) == \
                     NUL)
 
 /*
  * toupper() and tolower() that use the current locale.
  * Careful: Only call TOUPPER_LOC() and TOLOWER_LOC() with a character in the
  * range 0 - 255.  toupper()/tolower() on some systems can't handle others.
- * Note: It is often better to use vim_tolower() and vim_toupper(), because many
+ * Note: It is often better to use mb_tolower() and mb_toupper(), because many
  * toupper() and tolower() implementations only work for ASCII.
  */
 #define TOUPPER_LOC toupper
@@ -85,7 +71,7 @@
   do { \
     if (*p_langmap \
         && (condition) \
-        && (!p_lnr || (p_lnr && typebuf_maplen() == 0)) \
+        && (p_lrm || (vgetc_busy ? typebuf_maplen() == 0 : KeyTyped)) \
         && !KeyStuffed \
         && (c) >= 0) \
     { \
@@ -111,8 +97,10 @@
 /* mch_open_rw(): invoke os_open() with third argument for user R/W. */
 #if defined(UNIX)  /* open in rw------- mode */
 # define mch_open_rw(n, f)      os_open((n), (f), (mode_t)0600)
+#elif defined(WIN32)
+# define mch_open_rw(n, f)      os_open((n), (f), S_IREAD | S_IWRITE)
 #else
-#  define mch_open_rw(n, f)     os_open((n), (f), 0)
+# define mch_open_rw(n, f)      os_open((n), (f), 0)
 #endif
 
 # define REPLACE_NORMAL(s) (((s) & REPLACE_FLAG) && !((s) & VREPLACE_FLAG))
@@ -122,32 +110,29 @@
 /* Whether to draw the vertical bar on the right side of the cell. */
 # define CURSOR_BAR_RIGHT (curwin->w_p_rl && (!(State & CMDLINE) || cmdmsg_rl))
 
-/*
- * mb_ptr_adv(): advance a pointer to the next character, taking care of
- * multi-byte characters if needed.
- * mb_ptr_back(): backup a pointer to the previous character, taking care of
- * multi-byte characters if needed.
- * MB_COPY_CHAR(f, t): copy one char from "f" to "t" and advance the pointers.
- * PTR2CHAR(): get character from pointer.
- */
-/* Get the length of the character p points to */
-# define MB_PTR2LEN(p)          (has_mbyte ? (*mb_ptr2len)(p) : 1)
-/* Advance multi-byte pointer, skip over composing chars. */
-# define mb_ptr_adv(p)      (p += has_mbyte ? (*mb_ptr2len)((char_u *)p) : 1)
-/* Advance multi-byte pointer, do not skip over composing chars. */
-# define mb_cptr_adv(p)     (p += \
-  enc_utf8 ? utf_ptr2len(p) : has_mbyte ? (*mb_ptr2len)(p) : 1)
-/* Backup multi-byte pointer. Only use with "p" > "s" ! */
-# define mb_ptr_back(s, p)  (p -= has_mbyte ? ((*mb_head_off)((char_u *)s, (char_u *)p - 1) + 1) : 1)
-/* get length of multi-byte char, not including composing chars */
-# define mb_cptr2len(p)     (enc_utf8 ? utf_ptr2len(p) : (*mb_ptr2len)(p))
+// mb_ptr_adv(): advance a pointer to the next character, taking care of
+// multi-byte characters if needed.
+// mb_ptr_back(): backup a pointer to the previous character, taking care of
+// multi-byte characters if needed.
+// MB_COPY_CHAR(f, t): copy one char from "f" to "t" and advance the pointers.
+// PTR2CHAR(): get character from pointer.
 
-# define MB_COPY_CHAR(f, t) \
-  if (has_mbyte) mb_copy_char((const char_u **)(&f), &t); \
-  else *t++ = *f++
-# define MB_CHARLEN(p)      (has_mbyte ? mb_charlen(p) : (int)STRLEN(p))
-# define MB_CHAR2LEN(c)     (has_mbyte ? mb_char2len(c) : 1)
-# define PTR2CHAR(p)        (has_mbyte ? mb_ptr2char(p) : (int)*(p))
+// Get the length of the character p points to
+# define MB_PTR2LEN(p)          mb_ptr2len(p)
+// Advance multi-byte pointer, skip over composing chars.
+# define mb_ptr_adv(p)      (p += mb_ptr2len((char_u *)p))
+// Advance multi-byte pointer, do not skip over composing chars.
+# define mb_cptr_adv(p)     (p += utf_ptr2len(p))
+// Backup multi-byte pointer. Only use with "p" > "s" !
+# define mb_ptr_back(s, p)  (p -= mb_head_off((char_u *)s, (char_u *)p - 1) + 1)
+// get length of multi-byte char, not including composing chars
+# define MB_CPTR2LEN(p)     utf_ptr2len(p)
+
+# define MB_COPY_CHAR(f, t) mb_copy_char((const char_u **)(&f), &t);
+
+# define MB_CHARLEN(p)      mb_charlen(p)
+# define MB_CHAR2LEN(c)     mb_char2len(c)
+# define PTR2CHAR(p)        mb_ptr2char(p)
 
 # define RESET_BINDING(wp)  (wp)->w_p_scb = FALSE; (wp)->w_p_crb = FALSE
 
@@ -159,6 +144,58 @@
 /// zero in those cases (-Wdiv-by-zero in GCC).
 #define ARRAY_SIZE(arr) ((sizeof(arr)/sizeof((arr)[0])) / ((size_t)(!(sizeof(arr) % sizeof((arr)[0])))))
 
+// Duplicated in os/win_defs.h to avoid include-order sensitivity.
+#if defined(WIN32) && defined(RGB)
+# undef RGB
+#endif
 #define RGB(r, g, b) ((r << 16) | (g << 8) | b)
+
+#define STR_(x) #x
+#define STR(x) STR_(x)
+
+#ifndef __has_attribute
+# define NVIM_HAS_ATTRIBUTE(x) 0
+#elif defined(__clang__) && __clang__ == 1 \
+    && (__clang_major__ < 3 || (__clang_major__ == 3 && __clang_minor__ <= 5))
+// Starting in Clang 3.6, __has_attribute was fixed to only report true for
+// GNU-style attributes.  Prior to that, it reported true if _any_ backend
+// supported the attribute.
+# define NVIM_HAS_ATTRIBUTE(x) 0
+#else
+# define NVIM_HAS_ATTRIBUTE __has_attribute
+#endif
+
+#if NVIM_HAS_ATTRIBUTE(fallthrough)
+# define FALLTHROUGH __attribute__((fallthrough))
+#else
+# define FALLTHROUGH
+#endif
+
+// -V:STRUCT_CAST:641
+
+/// Change type of structure pointers: cast `struct a *` to `struct b *`
+///
+/// Used to silence PVS errors.
+///
+/// @param  Type  Structure to cast to.
+/// @param  obj  Object to cast.
+///
+/// @return ((Type *)obj).
+#define STRUCT_CAST(Type, obj) ((Type *)(obj))
+
+// Type of uv_buf_t.len is platform-dependent.
+// Related: https://github.com/libuv/libuv/pull/1236
+#if defined(WIN32)
+# define UV_BUF_LEN(x)  (ULONG)(x)
+#else
+# define UV_BUF_LEN(x)  (x)
+#endif
+
+// Type of read()/write() `count` param is platform-dependent.
+#if defined(WIN32)
+# define IO_COUNT(x)  (unsigned)(x)
+#else
+# define IO_COUNT(x)  (x)
+#endif
 
 #endif  // NVIM_MACROS_H

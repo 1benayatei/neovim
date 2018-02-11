@@ -1,6 +1,6 @@
 # This is not meant to be included by the top-level.
 cmake_minimum_required (VERSION 2.8.7)
-project(NEOVIM_DEPS)
+project(NVIM_DEPS)
 
 # Point CMake at any custom modules we may ship
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
@@ -87,38 +87,60 @@ endif()
 
 include(ExternalProject)
 
-set(LIBUV_URL https://github.com/libuv/libuv/archive/v1.9.1.tar.gz)
-set(LIBUV_SHA256 a6ca9f0648973d1463f46b495ce546ddcbe7cce2f04b32e802a15539e46c57ad)
+set(LIBUV_URL https://github.com/libuv/libuv/archive/v1.12.0.tar.gz)
+set(LIBUV_SHA256 41ce914a88da21d3b07a76023beca57576ca5b376c6ac440c80bc581cbca1250)
 
-set(MSGPACK_URL https://github.com/msgpack/msgpack-c/archive/cpp-1.0.0.tar.gz)
-set(MSGPACK_SHA256 afda64ca445203bb7092372b822bae8b2539fdcebbfc3f753f393628c2bcfe7d)
+set(MSGPACK_URL https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz)
+set(MSGPACK_SHA256 6126375af9b204611b9d9f154929f4f747e4599e6ae8443b337915dcf2899d2b)
 
-set(LUAJIT_URL https://github.com/neovim/deps/raw/master/opt/LuaJIT-2.0.4.tar.gz)
-set(LUAJIT_SHA256 620fa4eb12375021bef6e4f237cbd2dd5d49e56beb414bee052c746beef1807d)
+set(LUAJIT_URL https://github.com/LuaJIT/LuaJIT/archive/7dbf0b05f1228c1c719866db5e5f3d58f87f74c8.tar.gz)
+set(LUAJIT_SHA256 cbae019b5e396164eb5f0d07777b55cc03931bb944f83c61a010c053c9f5fd5b)
 
-set(LUA_URL https://github.com/lua/lua/archive/5.1.5.tar.gz)
-set(LUA_SHA256 1cd642c4c39778306a14e62ccddace5c7a4fb2257b0b06f43bc81cf305c7415f)
+set(LUA_URL https://www.lua.org/ftp/lua-5.1.5.tar.gz)
+set(LUA_SHA256 2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333)
 
-set(LUAROCKS_URL https://github.com/keplerproject/luarocks/archive/5d8a16526573b36d5b22aa74866120c998466697.tar.gz)
-set(LUAROCKS_SHA256 cae709111c5701235770047dfd7169f66b82ae1c7b9b79207f9df0afb722bfd9)
+# NOTE: Version must match LUAROCKS_VERSION in third-party/cmake/BuildLuarocks.cmake
+set(LUAROCKS_URL https://github.com/luarocks/luarocks/archive/v2.4.3.tar.gz)
+set(LUAROCKS_SHA256 ea1881d6954f2a98c34f93674571c8f0cbdbc28dedb3fa3cb56b6a91886d1a99)
 
-set(UNIBILIUM_URL https://github.com/mauke/unibilium/archive/v1.2.0.tar.gz)
-set(UNIBILIUM_SHA256 623af1099515e673abfd3cae5f2fa808a09ca55dda1c65a7b5c9424eb304ead8)
+set(UNIBILIUM_URL https://github.com/mauke/unibilium/archive/v1.2.1.tar.gz)
+set(UNIBILIUM_SHA256 6045b4f6adca7b1123284007675ca71f718f70942d3a93d8b9fa5bd442006ec1)
 
-set(LIBTERMKEY_URL http://www.leonerd.org.uk/code/libtermkey/libtermkey-0.18.tar.gz)
-set(LIBTERMKEY_SHA256 239746de41c845af52bb3c14055558f743292dd6c24ac26c2d6567a5a6093926)
+if(WIN32)
+set(LIBTERMKEY_URL https://github.com/equalsraf/libtermkey/archive/tb-windows.zip)
+set(LIBTERMKEY_SHA256 c81e33e38662b151a49847ff4feef4f8c4b2a66f3e159a28b575cbc9bcd8ffea)
+else()
+set(LIBTERMKEY_URL http://www.leonerd.org.uk/code/libtermkey/libtermkey-0.20.tar.gz)
+set(LIBTERMKEY_SHA256 6c0d87c94ab9915e76ecd313baec08dedf3bd56de83743d9aa923a081935d2f5)
+endif()
 
 set(LIBVTERM_URL https://github.com/neovim/libvterm/archive/a9c7c6fd20fa35e0ad3e0e98901ca12dfca9c25c.tar.gz)
 set(LIBVTERM_SHA256 1a4272be91d9614dc183a503786df83b6584e4afaab7feaaa5409f841afbd796)
 
-set(JEMALLOC_URL https://github.com/jemalloc/jemalloc/releases/download/4.2.1/jemalloc-4.2.1.tar.bz2)
-set(JEMALLOC_SHA256 5630650d5c1caab95d2f0898de4fe5ab8519dc680b04963b38bb425ef6a42d57)
+set(JEMALLOC_URL https://github.com/jemalloc/jemalloc/releases/download/4.5.0/jemalloc-4.5.0.tar.bz2)
+set(JEMALLOC_SHA256 9409d85664b4f135b77518b0b118c549009dc10f6cba14557d170476611f6780)
 
-set(LUV_URL https://github.com/luvit/luv/archive/1.9.1-0.tar.gz)
-set(LUV_SHA256 86a199403856018cd8e5529c8527450c83664a3d36f52d5253cbe909ea6c5a06)
+set(LUV_URL https://github.com/luvit/luv/archive/1.9.1-1.tar.gz)
+set(LUV_SHA256 562b9efaad30aa051a40eac9ade0c3df48bb8186763769abe47ec3fb3edb1268)
 
-set(GPERF_URL http://ftp.gnu.org/pub/gnu/gperf/gperf-3.0.4.tar.gz)
-set(GPERF_SHA256 767112a204407e62dbc3106647cf839ed544f3cf5d0f0523aaa2508623aad63e)
+set(GPERF_URL https://ftp.gnu.org/pub/gnu/gperf/gperf-3.1.tar.gz)
+set(GPERF_SHA256 588546b945bba4b70b6a3a616e80b4ab466e3f33024a352fc2198112cdbb3ae2)
+
+# 7za.exe cat.exe curl.exe ca-bundle.crt diff.exe tee.exe tidy.exe xxd.exe
+set(WINTOOLS_URL https://github.com/neovim/deps/raw/2f9acbecf06365c10baa3c0087f34a54c9c6f949/opt/win32tools.zip)
+set(WINTOOLS_SHA256 8bfce7e3a365721a027ce842f2ec1cf878f1726233c215c05964aac07300798c)
+
+set(WINGUI_URL https://github.com/equalsraf/neovim-qt/releases/download/v0.2.8/neovim-qt.zip)
+set(WINGUI_SHA256 260efc686423e2529360b6a45c8e241fbbf276c8de6b04d44f45ab5b6fe8df8f)
+
+set(WIN32YANK_X86_URL https://github.com/equalsraf/win32yank/releases/download/v0.0.4/win32yank-x86.zip)
+set(WIN32YANK_X86_SHA256 62f34e5a46c5d4a7b3f3b512e1ff7b77fedd432f42581cbe825233a996eed62c)
+
+set(WIN32YANK_X86_64_URL https://github.com/equalsraf/win32yank/releases/download/v0.0.4/win32yank-x64.zip)
+set(WIN32YANK_X86_64_SHA256 33a747a92da60fb65e668edbf7661d3d902411a2d545fe9dc08623cecd142a20)
+
+set(WINPTY_URL https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msvc2015.zip)
+set(WINPTY_SHA256 35a48ece2ff4acdcbc8299d4920de53eb86b1fb41e64d2fe5ae7898931bcee89)
 
 if(USE_BUNDLED_UNIBILIUM)
   include(BuildUnibilium)
@@ -162,6 +184,38 @@ endif()
 
 if(USE_BUNDLED_GPERF)
   include(BuildGperf)
+endif()
+
+include(GetBinaryDeps)
+
+if(WIN32)
+  GetBinaryDep(TARGET wintools
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_directory . ${DEPS_INSTALL_DIR}/bin)
+
+  GetBinaryDep(TARGET wingui
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_directory bin ${DEPS_INSTALL_DIR}/bin)
+
+  include(TargetArch)
+  GetBinaryDep(TARGET "win32yank_${TARGET_ARCH}"
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E copy win32yank.exe ${DEPS_INSTALL_DIR}/bin)
+
+  if("${TARGET_ARCH}" STREQUAL "X86_64")
+    set(TARGET_ARCH x64)
+  elseif(TARGET_ARCH STREQUAL "X86")
+    set(TARGET_ARCH ia32)
+  endif()
+
+  GetBinaryDep(TARGET winpty
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${DEPS_INSTALL_DIR}/bin
+      COMMAND ${CMAKE_COMMAND} -DFROM_GLOB=${DEPS_BUILD_DIR}/src/winpty/${TARGET_ARCH}/bin/*
+        -DTO=${DEPS_INSTALL_DIR}/bin/
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFilesGlob.cmake
+      COMMAND ${CMAKE_COMMAND} -DFROM_GLOB=${DEPS_BUILD_DIR}/src/winpty/include/*
+        -DTO=${DEPS_INSTALL_DIR}/include/
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFilesGlob.cmake
+      COMMAND ${CMAKE_COMMAND} -DFROM_GLOB=${DEPS_BUILD_DIR}/src/winpty/${TARGET_ARCH}/lib/*
+        -DTO=${DEPS_INSTALL_DIR}/lib/
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFilesGlob.cmake)
 endif()
 
 add_custom_target(clean-shared-libraries

@@ -23,8 +23,6 @@ local wshada, _, shada_fname, clean =
 local dirname = 'Xtest-functional-shada-shada.d'
 local dirshada = dirname .. '/main.shada'
 
-if helpers.pending_win32(pending) then return end
-
 describe('ShaDa support code', function()
   before_each(reset)
   after_each(function()
@@ -173,6 +171,7 @@ describe('ShaDa support code', function()
   end
 
   it('correctly uses shada-r option', function()
+    nvim_command('set shellslash')
     meths.set_var('__home', paths.test_source_path)
     nvim_command('let $HOME = __home')
     nvim_command('unlet __home')
@@ -181,8 +180,7 @@ describe('ShaDa support code', function()
     nvim_command('undo')
     nvim_command('set shada+=%')
     nvim_command('wshada! ' .. shada_fname)
-    local readme_fname = paths.test_source_path .. '/README.md'
-    readme_fname = helpers.eval( 'resolve("' .. readme_fname .. '")' )
+    local readme_fname = funcs.resolve(paths.test_source_path) .. '/README.md'
     eq({[7]=1, [8]=2, [9]=1, [10]=4, [11]=1}, find_file(readme_fname))
     nvim_command('set shada+=r~')
     nvim_command('wshada! ' .. shada_fname)
@@ -190,12 +188,14 @@ describe('ShaDa support code', function()
     nvim_command('set shada-=r~')
     nvim_command('wshada! ' .. shada_fname)
     eq({[7]=1, [8]=2, [9]=1, [10]=4, [11]=1}, find_file(readme_fname))
-    nvim_command('set shada+=r' .. paths.test_source_path)
+    nvim_command('set shada+=r' .. funcs.escape(
+      funcs.escape(paths.test_source_path, '$~'), ' "\\,'))
     nvim_command('wshada! ' .. shada_fname)
     eq({}, find_file(readme_fname))
   end)
 
   it('correctly ignores case with shada-r option', function()
+    nvim_command('set shellslash')
     local pwd = funcs.getcwd()
     local relfname = 'абв/test'
     local fname = pwd .. '/' .. relfname
@@ -240,6 +240,8 @@ describe('ShaDa support code', function()
   end)
 
   it('does not crash when ShaDa file directory is not writable', function()
+    if helpers.pending_win32(pending) then return end
+
     funcs.mkdir(dirname, '', 0)
     eq(0, funcs.filewritable(dirname))
     set_additional_cmd('set shada=')

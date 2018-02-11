@@ -2658,11 +2658,6 @@ msgstr "E49: Niewłaściwa wielkość przewinięcia"
 msgid "E901: Job table is full"
 msgstr ""
 
-#: ../globals.h:1022
-#, c-format
-msgid "E902: \"%s\" is not an executable"
-msgstr ""
-
 #: ../globals.h:1024
 #, c-format
 msgid "E364: Library call failed for \"%s()\""
@@ -3555,7 +3550,7 @@ msgstr ""
 #: ../main.c:2240
 msgid "--startuptime <file>\tWrite startup timing messages to <file>"
 msgstr ""
-"--startuptime <plik>\n"
+"--startuptime <plik> "
 "Zapisz wiadomości o długości startu do <plik>"
 
 #: ../main.c:2242

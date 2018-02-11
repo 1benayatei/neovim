@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /*
  * NFA regular expression implementation.
  *
@@ -53,13 +56,13 @@ enum {
   NFA_RANGE_MIN,                    /* low end of a range  */
   NFA_RANGE_MAX,                    /* high end of a range  */
 
-  NFA_CONCAT,                       /* concatenate two previous items (postfix
-                                     * only) */
-  NFA_OR,                           /* \| (postfix only) */
-  NFA_STAR,                         /* greedy * (posfix only) */
-  NFA_STAR_NONGREEDY,               /* non-greedy * (postfix only) */
-  NFA_QUEST,                        /* greedy \? (postfix only) */
-  NFA_QUEST_NONGREEDY,              /* non-greedy \? (postfix only) */
+  NFA_CONCAT,                       // concatenate two previous items (postfix
+                                    // only)
+  NFA_OR,                           // \| (postfix only)
+  NFA_STAR,                         // greedy * (postfix only)
+  NFA_STAR_NONGREEDY,               // non-greedy * (postfix only)
+  NFA_QUEST,                        // greedy \? (postfix only)
+  NFA_QUEST_NONGREEDY,              // non-greedy \? (postfix only)
 
   NFA_BOL,                          /* ^    Begin line */
   NFA_EOL,                          /* $    End line */
@@ -631,6 +634,7 @@ static int nfa_recognize_char_class(char_u *start, char_u *end, int extra_newl)
           config |= CLASS_o7;
           break;
         }
+        return FAIL;
       case 'a':
         if (*(p + 2) == 'z') {
           config |= CLASS_az;
@@ -639,6 +643,7 @@ static int nfa_recognize_char_class(char_u *start, char_u *end, int extra_newl)
           config |= CLASS_af;
           break;
         }
+        return FAIL;
       case 'A':
         if (*(p + 2) == 'Z') {
           config |= CLASS_AZ;
@@ -647,7 +652,7 @@ static int nfa_recognize_char_class(char_u *start, char_u *end, int extra_newl)
           config |= CLASS_AF;
           break;
         }
-      /* FALLTHROUGH */
+        return FAIL;
       default:
         return FAIL;
       }
@@ -723,13 +728,70 @@ static void nfa_emit_equi_class(int c)
 
   if (enc_utf8 || STRCMP(p_enc, "latin1") == 0
       || STRCMP(p_enc, "iso-8859-15") == 0) {
+#define A_grave 0xc0
+#define A_acute 0xc1
+#define A_circumflex 0xc2
+#define A_virguilla 0xc3
+#define A_diaeresis 0xc4
+#define A_ring 0xc5
+#define C_cedilla 0xc7
+#define E_grave 0xc8
+#define E_acute 0xc9
+#define E_circumflex 0xca
+#define E_diaeresis 0xcb
+#define I_grave 0xcc
+#define I_acute 0xcd
+#define I_circumflex 0xce
+#define I_diaeresis 0xcf
+#define N_virguilla 0xd1
+#define O_grave 0xd2
+#define O_acute 0xd3
+#define O_circumflex 0xd4
+#define O_virguilla 0xd5
+#define O_diaeresis 0xd6
+#define O_slash 0xd8
+#define U_grave 0xd9
+#define U_acute 0xda
+#define U_circumflex 0xdb
+#define U_diaeresis 0xdc
+#define Y_acute 0xdd
+#define a_grave 0xe0
+#define a_acute 0xe1
+#define a_circumflex 0xe2
+#define a_virguilla 0xe3
+#define a_diaeresis 0xe4
+#define a_ring 0xe5
+#define c_cedilla 0xe7
+#define e_grave 0xe8
+#define e_acute 0xe9
+#define e_circumflex 0xea
+#define e_diaeresis 0xeb
+#define i_grave 0xec
+#define i_acute 0xed
+#define i_circumflex 0xee
+#define i_diaeresis 0xef
+#define n_virguilla 0xf1
+#define o_grave 0xf2
+#define o_acute 0xf3
+#define o_circumflex 0xf4
+#define o_virguilla 0xf5
+#define o_diaeresis 0xf6
+#define o_slash 0xf8
+#define u_grave 0xf9
+#define u_acute 0xfa
+#define u_circumflex 0xfb
+#define u_diaeresis 0xfc
+#define y_acute 0xfd
+#define y_diaeresis 0xff
     switch (c) {
-    case 'A': case 0300: case 0301: case 0302:
-    case 0303: case 0304: case 0305:
-      CASEMBC(0x100) CASEMBC(0x102) CASEMBC(0x104) CASEMBC(0x1cd)
-      CASEMBC(0x1de) CASEMBC(0x1e0) CASEMBC(0x1ea2)
-      EMIT2('A'); EMIT2(0300); EMIT2(0301); EMIT2(0302);
-      EMIT2(0303); EMIT2(0304); EMIT2(0305);
+    case 'A': case A_grave: case A_acute: case A_circumflex:
+              case A_virguilla: case A_diaeresis: case A_ring:
+              CASEMBC(0x100) CASEMBC(0x102) CASEMBC(0x104)
+              CASEMBC(0x1cd) CASEMBC(0x1de) CASEMBC(0x1e0)
+              CASEMBC(0x1ea2)
+      EMIT2('A'); EMIT2(A_grave); EMIT2(A_acute);
+      EMIT2(A_circumflex); EMIT2(A_virguilla);
+      EMIT2(A_diaeresis); EMIT2(A_ring);
       EMITMBC(0x100) EMITMBC(0x102) EMITMBC(0x104)
       EMITMBC(0x1cd) EMITMBC(0x1de) EMITMBC(0x1e0)
       EMITMBC(0x1ea2)
@@ -739,23 +801,24 @@ static void nfa_emit_equi_class(int c)
       EMIT2('B'); EMITMBC(0x1e02) EMITMBC(0x1e06)
       return;
 
-    case 'C': case 0307:
-      CASEMBC(0x106) CASEMBC(0x108) CASEMBC(0x10a) CASEMBC(0x10c)
-      EMIT2('C'); EMIT2(0307); EMITMBC(0x106) EMITMBC(0x108)
+    case 'C': case C_cedilla: CASEMBC(0x106) CASEMBC(0x108) CASEMBC(0x10a)
+              CASEMBC(0x10c)
+      EMIT2('C'); EMIT2(C_cedilla); EMITMBC(0x106) EMITMBC(0x108)
       EMITMBC(0x10a) EMITMBC(0x10c)
       return;
 
     case 'D': CASEMBC(0x10e) CASEMBC(0x110) CASEMBC(0x1e0a)
-      CASEMBC(0x1e0e) CASEMBC(0x1e10)
+              CASEMBC(0x1e0e) CASEMBC(0x1e10)
       EMIT2('D'); EMITMBC(0x10e) EMITMBC(0x110) EMITMBC(0x1e0a)
       EMITMBC(0x1e0e) EMITMBC(0x1e10)
       return;
 
-    case 'E': case 0310: case 0311: case 0312: case 0313:
-      CASEMBC(0x112) CASEMBC(0x114) CASEMBC(0x116) CASEMBC(0x118)
-      CASEMBC(0x11a) CASEMBC(0x1eba) CASEMBC(0x1ebc)
-      EMIT2('E'); EMIT2(0310); EMIT2(0311); EMIT2(0312);
-      EMIT2(0313);
+    case 'E': case E_grave: case E_acute: case E_circumflex:
+              case E_diaeresis: CASEMBC(0x112) CASEMBC(0x114)
+              CASEMBC(0x116) CASEMBC(0x118) CASEMBC(0x11a)
+              CASEMBC(0x1eba) CASEMBC(0x1ebc)
+      EMIT2('E'); EMIT2(E_grave); EMIT2(E_acute);
+      EMIT2(E_circumflex); EMIT2(E_diaeresis);
       EMITMBC(0x112) EMITMBC(0x114) EMITMBC(0x116)
       EMITMBC(0x118) EMITMBC(0x11a) EMITMBC(0x1eba)
       EMITMBC(0x1ebc)
@@ -766,24 +829,26 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'G': CASEMBC(0x11c) CASEMBC(0x11e) CASEMBC(0x120)
-      CASEMBC(0x122) CASEMBC(0x1e4) CASEMBC(0x1e6) CASEMBC(0x1f4)
-      CASEMBC(0x1e20)
+              CASEMBC(0x122) CASEMBC(0x1e4) CASEMBC(0x1e6)
+              CASEMBC(0x1f4) CASEMBC(0x1e20)
       EMIT2('G'); EMITMBC(0x11c) EMITMBC(0x11e) EMITMBC(0x120)
       EMITMBC(0x122) EMITMBC(0x1e4) EMITMBC(0x1e6)
       EMITMBC(0x1f4) EMITMBC(0x1e20)
       return;
 
     case 'H': CASEMBC(0x124) CASEMBC(0x126) CASEMBC(0x1e22)
-      CASEMBC(0x1e26) CASEMBC(0x1e28)
+              CASEMBC(0x1e26) CASEMBC(0x1e28)
       EMIT2('H'); EMITMBC(0x124) EMITMBC(0x126) EMITMBC(0x1e22)
       EMITMBC(0x1e26) EMITMBC(0x1e28)
       return;
 
-    case 'I': case 0314: case 0315: case 0316: case 0317:
-      CASEMBC(0x128) CASEMBC(0x12a) CASEMBC(0x12c) CASEMBC(0x12e)
-      CASEMBC(0x130) CASEMBC(0x1cf) CASEMBC(0x1ec8)
-      EMIT2('I'); EMIT2(0314); EMIT2(0315); EMIT2(0316);
-      EMIT2(0317); EMITMBC(0x128) EMITMBC(0x12a)
+    case 'I': case I_grave: case I_acute: case I_circumflex:
+              case I_diaeresis: CASEMBC(0x128) CASEMBC(0x12a)
+              CASEMBC(0x12c) CASEMBC(0x12e) CASEMBC(0x130)
+              CASEMBC(0x1cf) CASEMBC(0x1ec8)
+      EMIT2('I'); EMIT2(I_grave); EMIT2(I_acute);
+      EMIT2(I_circumflex); EMIT2(I_diaeresis);
+      EMITMBC(0x128) EMITMBC(0x12a)
       EMITMBC(0x12c) EMITMBC(0x12e) EMITMBC(0x130)
       EMITMBC(0x1cf) EMITMBC(0x1ec8)
       return;
@@ -793,13 +858,13 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'K': CASEMBC(0x136) CASEMBC(0x1e8) CASEMBC(0x1e30)
-      CASEMBC(0x1e34)
+              CASEMBC(0x1e34)
       EMIT2('K'); EMITMBC(0x136) EMITMBC(0x1e8) EMITMBC(0x1e30)
       EMITMBC(0x1e34)
       return;
 
     case 'L': CASEMBC(0x139) CASEMBC(0x13b) CASEMBC(0x13d)
-      CASEMBC(0x13f) CASEMBC(0x141) CASEMBC(0x1e3a)
+              CASEMBC(0x13f) CASEMBC(0x141) CASEMBC(0x1e3a)
       EMIT2('L'); EMITMBC(0x139) EMITMBC(0x13b) EMITMBC(0x13d)
       EMITMBC(0x13f) EMITMBC(0x141) EMITMBC(0x1e3a)
       return;
@@ -808,19 +873,21 @@ static void nfa_emit_equi_class(int c)
       EMIT2('M'); EMITMBC(0x1e3e) EMITMBC(0x1e40)
       return;
 
-    case 'N': case 0321:
-      CASEMBC(0x143) CASEMBC(0x145) CASEMBC(0x147) CASEMBC(0x1e44)
-      CASEMBC(0x1e48)
-      EMIT2('N'); EMIT2(0321); EMITMBC(0x143) EMITMBC(0x145)
+    case 'N': case N_virguilla: CASEMBC(0x143) CASEMBC(0x145)
+              CASEMBC(0x147) CASEMBC(0x1e44) CASEMBC(0x1e48)
+      EMIT2('N'); EMIT2(N_virguilla);
+      EMITMBC(0x143) EMITMBC(0x145)
       EMITMBC(0x147) EMITMBC(0x1e44) EMITMBC(0x1e48)
       return;
 
-    case 'O': case 0322: case 0323: case 0324: case 0325:
-    case 0326: case 0330:
-      CASEMBC(0x14c) CASEMBC(0x14e) CASEMBC(0x150) CASEMBC(0x1a0)
-      CASEMBC(0x1d1) CASEMBC(0x1ea) CASEMBC(0x1ec) CASEMBC(0x1ece)
-      EMIT2('O'); EMIT2(0322); EMIT2(0323); EMIT2(0324);
-      EMIT2(0325); EMIT2(0326); EMIT2(0330);
+    case 'O': case O_grave: case O_acute: case O_circumflex:
+              case O_virguilla: case O_diaeresis: case O_slash:
+              CASEMBC(0x14c) CASEMBC(0x14e) CASEMBC(0x150)
+              CASEMBC(0x1a0) CASEMBC(0x1d1) CASEMBC(0x1ea)
+              CASEMBC(0x1ec) CASEMBC(0x1ece)
+      EMIT2('O'); EMIT2(O_grave); EMIT2(O_acute);
+      EMIT2(O_circumflex); EMIT2(O_virguilla);
+      EMIT2(O_diaeresis); EMIT2(O_slash);
       EMITMBC(0x14c) EMITMBC(0x14e) EMITMBC(0x150)
       EMITMBC(0x1a0) EMITMBC(0x1d1) EMITMBC(0x1ea)
       EMITMBC(0x1ec) EMITMBC(0x1ece)
@@ -831,29 +898,31 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'R': CASEMBC(0x154) CASEMBC(0x156) CASEMBC(0x158)
-      CASEMBC(0x1e58) CASEMBC(0x1e5e)
+              CASEMBC(0x1e58) CASEMBC(0x1e5e)
       EMIT2('R'); EMITMBC(0x154) EMITMBC(0x156) EMITMBC(0x158)
       EMITMBC(0x1e58) EMITMBC(0x1e5e)
       return;
 
     case 'S': CASEMBC(0x15a) CASEMBC(0x15c) CASEMBC(0x15e)
-      CASEMBC(0x160) CASEMBC(0x1e60)
+              CASEMBC(0x160) CASEMBC(0x1e60)
       EMIT2('S'); EMITMBC(0x15a) EMITMBC(0x15c) EMITMBC(0x15e)
       EMITMBC(0x160) EMITMBC(0x1e60)
       return;
 
     case 'T': CASEMBC(0x162) CASEMBC(0x164) CASEMBC(0x166)
-      CASEMBC(0x1e6a) CASEMBC(0x1e6e)
+              CASEMBC(0x1e6a) CASEMBC(0x1e6e)
       EMIT2('T'); EMITMBC(0x162) EMITMBC(0x164) EMITMBC(0x166)
       EMITMBC(0x1e6a) EMITMBC(0x1e6e)
       return;
 
-    case 'U': case 0331: case 0332: case 0333: case 0334:
-      CASEMBC(0x168) CASEMBC(0x16a) CASEMBC(0x16c) CASEMBC(0x16e)
-      CASEMBC(0x170) CASEMBC(0x172) CASEMBC(0x1af) CASEMBC(0x1d3)
-      CASEMBC(0x1ee6)
-      EMIT2('U'); EMIT2(0331); EMIT2(0332); EMIT2(0333);
-      EMIT2(0334); EMITMBC(0x168) EMITMBC(0x16a)
+    case 'U': case U_grave: case U_acute: case U_diaeresis:
+              case U_circumflex: CASEMBC(0x168) CASEMBC(0x16a)
+              CASEMBC(0x16c) CASEMBC(0x16e) CASEMBC(0x170)
+              CASEMBC(0x172) CASEMBC(0x1af) CASEMBC(0x1d3)
+              CASEMBC(0x1ee6)
+      EMIT2('U'); EMIT2(U_grave); EMIT2(U_acute);
+      EMIT2(U_diaeresis); EMIT2(U_circumflex);
+      EMITMBC(0x168) EMITMBC(0x16a)
       EMITMBC(0x16c) EMITMBC(0x16e) EMITMBC(0x170)
       EMITMBC(0x172) EMITMBC(0x1af) EMITMBC(0x1d3)
       EMITMBC(0x1ee6)
@@ -864,7 +933,7 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'W': CASEMBC(0x174) CASEMBC(0x1e80) CASEMBC(0x1e82)
-      CASEMBC(0x1e84) CASEMBC(0x1e86)
+              CASEMBC(0x1e84) CASEMBC(0x1e86)
       EMIT2('W'); EMITMBC(0x174) EMITMBC(0x1e80) EMITMBC(0x1e82)
       EMITMBC(0x1e84) EMITMBC(0x1e86)
       return;
@@ -873,26 +942,29 @@ static void nfa_emit_equi_class(int c)
       EMIT2('X'); EMITMBC(0x1e8a) EMITMBC(0x1e8c)
       return;
 
-    case 'Y': case 0335:
-      CASEMBC(0x176) CASEMBC(0x178) CASEMBC(0x1e8e) CASEMBC(0x1ef2)
-      CASEMBC(0x1ef6) CASEMBC(0x1ef8)
-      EMIT2('Y'); EMIT2(0335); EMITMBC(0x176) EMITMBC(0x178)
+    case 'Y': case Y_acute: CASEMBC(0x176) CASEMBC(0x178)
+              CASEMBC(0x1e8e) CASEMBC(0x1ef2) CASEMBC(0x1ef6)
+              CASEMBC(0x1ef8)
+      EMIT2('Y'); EMIT2(Y_acute);
+      EMITMBC(0x176) EMITMBC(0x178)
       EMITMBC(0x1e8e) EMITMBC(0x1ef2) EMITMBC(0x1ef6)
       EMITMBC(0x1ef8)
       return;
 
     case 'Z': CASEMBC(0x179) CASEMBC(0x17b) CASEMBC(0x17d)
-      CASEMBC(0x1b5) CASEMBC(0x1e90) CASEMBC(0x1e94)
+              CASEMBC(0x1b5) CASEMBC(0x1e90) CASEMBC(0x1e94)
       EMIT2('Z'); EMITMBC(0x179) EMITMBC(0x17b) EMITMBC(0x17d)
       EMITMBC(0x1b5) EMITMBC(0x1e90) EMITMBC(0x1e94)
       return;
 
-    case 'a': case 0340: case 0341: case 0342:
-    case 0343: case 0344: case 0345:
-      CASEMBC(0x101) CASEMBC(0x103) CASEMBC(0x105) CASEMBC(0x1ce)
-      CASEMBC(0x1df) CASEMBC(0x1e1) CASEMBC(0x1ea3)
-      EMIT2('a'); EMIT2(0340); EMIT2(0341); EMIT2(0342);
-      EMIT2(0343); EMIT2(0344); EMIT2(0345);
+    case 'a': case a_grave: case a_acute: case a_circumflex:
+              case a_virguilla: case a_diaeresis: case a_ring:
+              CASEMBC(0x101) CASEMBC(0x103) CASEMBC(0x105)
+              CASEMBC(0x1ce) CASEMBC(0x1df) CASEMBC(0x1e1)
+              CASEMBC(0x1ea3)
+      EMIT2('a'); EMIT2(a_grave); EMIT2(a_acute);
+      EMIT2(a_circumflex); EMIT2(a_virguilla);
+      EMIT2(a_diaeresis); EMIT2(a_ring);
       EMITMBC(0x101) EMITMBC(0x103) EMITMBC(0x105)
       EMITMBC(0x1ce) EMITMBC(0x1df) EMITMBC(0x1e1)
       EMITMBC(0x1ea3)
@@ -902,23 +974,26 @@ static void nfa_emit_equi_class(int c)
       EMIT2('b'); EMITMBC(0x1e03) EMITMBC(0x1e07)
       return;
 
-    case 'c': case 0347:
-      CASEMBC(0x107) CASEMBC(0x109) CASEMBC(0x10b) CASEMBC(0x10d)
-      EMIT2('c'); EMIT2(0347); EMITMBC(0x107) EMITMBC(0x109)
+    case 'c': case c_cedilla: CASEMBC(0x107) CASEMBC(0x109)
+              CASEMBC(0x10b) CASEMBC(0x10d)
+      EMIT2('c'); EMIT2(c_cedilla);
+      EMITMBC(0x107) EMITMBC(0x109)
       EMITMBC(0x10b) EMITMBC(0x10d)
       return;
 
     case 'd': CASEMBC(0x10f) CASEMBC(0x111) CASEMBC(0x1e0b)
-      CASEMBC(0x1e0f) CASEMBC(0x1e11)
+              CASEMBC(0x1e0f) CASEMBC(0x1e11)
       EMIT2('d'); EMITMBC(0x10f) EMITMBC(0x111) EMITMBC(0x1e0b)
       EMITMBC(0x1e0f) EMITMBC(0x1e11)
       return;
 
-    case 'e': case 0350: case 0351: case 0352: case 0353:
-      CASEMBC(0x113) CASEMBC(0x115) CASEMBC(0x117) CASEMBC(0x119)
-      CASEMBC(0x11b) CASEMBC(0x1ebb) CASEMBC(0x1ebd)
-      EMIT2('e'); EMIT2(0350); EMIT2(0351); EMIT2(0352);
-      EMIT2(0353); EMITMBC(0x113) EMITMBC(0x115)
+    case 'e': case e_grave: case e_acute: case e_circumflex:
+              case e_diaeresis: CASEMBC(0x113) CASEMBC(0x115)
+              CASEMBC(0x117) CASEMBC(0x119) CASEMBC(0x11b)
+              CASEMBC(0x1ebb) CASEMBC(0x1ebd)
+      EMIT2('e'); EMIT2(e_grave); EMIT2(e_acute);
+      EMIT2(e_circumflex); EMIT2(e_diaeresis);
+      EMITMBC(0x113) EMITMBC(0x115)
       EMITMBC(0x117) EMITMBC(0x119) EMITMBC(0x11b)
       EMITMBC(0x1ebb) EMITMBC(0x1ebd)
       return;
@@ -928,24 +1003,26 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'g': CASEMBC(0x11d) CASEMBC(0x11f) CASEMBC(0x121)
-      CASEMBC(0x123) CASEMBC(0x1e5) CASEMBC(0x1e7) CASEMBC(0x1f5)
-      CASEMBC(0x1e21)
+              CASEMBC(0x123) CASEMBC(0x1e5) CASEMBC(0x1e7)
+              CASEMBC(0x1f5) CASEMBC(0x1e21)
       EMIT2('g'); EMITMBC(0x11d) EMITMBC(0x11f) EMITMBC(0x121)
       EMITMBC(0x123) EMITMBC(0x1e5) EMITMBC(0x1e7)
       EMITMBC(0x1f5) EMITMBC(0x1e21)
       return;
 
     case 'h': CASEMBC(0x125) CASEMBC(0x127) CASEMBC(0x1e23)
-      CASEMBC(0x1e27) CASEMBC(0x1e29) CASEMBC(0x1e96)
+              CASEMBC(0x1e27) CASEMBC(0x1e29) CASEMBC(0x1e96)
       EMIT2('h'); EMITMBC(0x125) EMITMBC(0x127) EMITMBC(0x1e23)
       EMITMBC(0x1e27) EMITMBC(0x1e29) EMITMBC(0x1e96)
       return;
 
-    case 'i': case 0354: case 0355: case 0356: case 0357:
-      CASEMBC(0x129) CASEMBC(0x12b) CASEMBC(0x12d) CASEMBC(0x12f)
-      CASEMBC(0x1d0) CASEMBC(0x1ec9)
-      EMIT2('i'); EMIT2(0354); EMIT2(0355); EMIT2(0356);
-      EMIT2(0357); EMITMBC(0x129) EMITMBC(0x12b)
+    case 'i': case i_grave: case i_acute: case i_circumflex:
+              case i_diaeresis: CASEMBC(0x129) CASEMBC(0x12b)
+              CASEMBC(0x12d) CASEMBC(0x12f) CASEMBC(0x1d0)
+              CASEMBC(0x1ec9)
+      EMIT2('i'); EMIT2(i_grave); EMIT2(i_acute);
+      EMIT2(i_circumflex); EMIT2(i_diaeresis);
+      EMITMBC(0x129) EMITMBC(0x12b)
       EMITMBC(0x12d) EMITMBC(0x12f) EMITMBC(0x1d0)
       EMITMBC(0x1ec9)
       return;
@@ -955,13 +1032,13 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'k': CASEMBC(0x137) CASEMBC(0x1e9) CASEMBC(0x1e31)
-      CASEMBC(0x1e35)
+              CASEMBC(0x1e35)
       EMIT2('k'); EMITMBC(0x137) EMITMBC(0x1e9) EMITMBC(0x1e31)
       EMITMBC(0x1e35)
       return;
 
     case 'l': CASEMBC(0x13a) CASEMBC(0x13c) CASEMBC(0x13e)
-      CASEMBC(0x140) CASEMBC(0x142) CASEMBC(0x1e3b)
+              CASEMBC(0x140) CASEMBC(0x142) CASEMBC(0x1e3b)
       EMIT2('l'); EMITMBC(0x13a) EMITMBC(0x13c) EMITMBC(0x13e)
       EMITMBC(0x140) EMITMBC(0x142) EMITMBC(0x1e3b)
       return;
@@ -970,20 +1047,23 @@ static void nfa_emit_equi_class(int c)
       EMIT2('m'); EMITMBC(0x1e3f) EMITMBC(0x1e41)
       return;
 
-    case 'n': case 0361:
-      CASEMBC(0x144) CASEMBC(0x146) CASEMBC(0x148) CASEMBC(0x149)
-      CASEMBC(0x1e45) CASEMBC(0x1e49)
-      EMIT2('n'); EMIT2(0361); EMITMBC(0x144) EMITMBC(0x146)
+    case 'n': case n_virguilla: CASEMBC(0x144) CASEMBC(0x146)
+              CASEMBC(0x148) CASEMBC(0x149) CASEMBC(0x1e45)
+              CASEMBC(0x1e49)
+      EMIT2('n'); EMIT2(n_virguilla);
+      EMITMBC(0x144) EMITMBC(0x146)
       EMITMBC(0x148) EMITMBC(0x149) EMITMBC(0x1e45)
       EMITMBC(0x1e49)
       return;
 
-    case 'o': case 0362: case 0363: case 0364: case 0365:
-    case 0366: case 0370:
-      CASEMBC(0x14d) CASEMBC(0x14f) CASEMBC(0x151) CASEMBC(0x1a1)
-      CASEMBC(0x1d2) CASEMBC(0x1eb) CASEMBC(0x1ed) CASEMBC(0x1ecf)
-      EMIT2('o'); EMIT2(0362); EMIT2(0363); EMIT2(0364);
-      EMIT2(0365); EMIT2(0366); EMIT2(0370);
+    case 'o': case o_grave: case o_acute: case o_circumflex:
+              case o_virguilla: case o_diaeresis: case o_slash:
+              CASEMBC(0x14d) CASEMBC(0x14f) CASEMBC(0x151)
+              CASEMBC(0x1a1) CASEMBC(0x1d2) CASEMBC(0x1eb)
+              CASEMBC(0x1ed) CASEMBC(0x1ecf)
+      EMIT2('o'); EMIT2(o_grave); EMIT2(o_acute);
+      EMIT2(o_circumflex); EMIT2(o_virguilla);
+      EMIT2(o_diaeresis); EMIT2(o_slash);
       EMITMBC(0x14d) EMITMBC(0x14f) EMITMBC(0x151)
       EMITMBC(0x1a1) EMITMBC(0x1d2) EMITMBC(0x1eb)
       EMITMBC(0x1ed) EMITMBC(0x1ecf)
@@ -994,29 +1074,31 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'r': CASEMBC(0x155) CASEMBC(0x157) CASEMBC(0x159)
-      CASEMBC(0x1e59) CASEMBC(0x1e5f)
+              CASEMBC(0x1e59) CASEMBC(0x1e5f)
       EMIT2('r'); EMITMBC(0x155) EMITMBC(0x157) EMITMBC(0x159)
       EMITMBC(0x1e59) EMITMBC(0x1e5f)
       return;
 
     case 's': CASEMBC(0x15b) CASEMBC(0x15d) CASEMBC(0x15f)
-      CASEMBC(0x161) CASEMBC(0x1e61)
+              CASEMBC(0x161) CASEMBC(0x1e61)
       EMIT2('s'); EMITMBC(0x15b) EMITMBC(0x15d) EMITMBC(0x15f)
       EMITMBC(0x161) EMITMBC(0x1e61)
       return;
 
     case 't': CASEMBC(0x163) CASEMBC(0x165) CASEMBC(0x167)
-      CASEMBC(0x1e6b) CASEMBC(0x1e6f) CASEMBC(0x1e97)
+              CASEMBC(0x1e6b) CASEMBC(0x1e6f) CASEMBC(0x1e97)
       EMIT2('t'); EMITMBC(0x163) EMITMBC(0x165) EMITMBC(0x167)
       EMITMBC(0x1e6b) EMITMBC(0x1e6f) EMITMBC(0x1e97)
       return;
 
-    case 'u': case 0371: case 0372: case 0373: case 0374:
-      CASEMBC(0x169) CASEMBC(0x16b) CASEMBC(0x16d) CASEMBC(0x16f)
-      CASEMBC(0x171) CASEMBC(0x173) CASEMBC(0x1b0) CASEMBC(0x1d4)
-      CASEMBC(0x1ee7)
-      EMIT2('u'); EMIT2(0371); EMIT2(0372); EMIT2(0373);
-      EMIT2(0374); EMITMBC(0x169) EMITMBC(0x16b)
+    case 'u': case u_grave: case u_acute: case u_circumflex:
+              case u_diaeresis: CASEMBC(0x169) CASEMBC(0x16b)
+              CASEMBC(0x16d) CASEMBC(0x16f) CASEMBC(0x171)
+              CASEMBC(0x173) CASEMBC(0x1b0) CASEMBC(0x1d4)
+              CASEMBC(0x1ee7)
+      EMIT2('u'); EMIT2(u_grave); EMIT2(u_acute);
+      EMIT2(u_circumflex); EMIT2(u_diaeresis);
+      EMITMBC(0x169) EMITMBC(0x16b)
       EMITMBC(0x16d) EMITMBC(0x16f) EMITMBC(0x171)
       EMITMBC(0x173) EMITMBC(0x1b0) EMITMBC(0x1d4)
       EMITMBC(0x1ee7)
@@ -1027,7 +1109,7 @@ static void nfa_emit_equi_class(int c)
       return;
 
     case 'w': CASEMBC(0x175) CASEMBC(0x1e81) CASEMBC(0x1e83)
-      CASEMBC(0x1e85) CASEMBC(0x1e87) CASEMBC(0x1e98)
+              CASEMBC(0x1e85) CASEMBC(0x1e87) CASEMBC(0x1e98)
       EMIT2('w'); EMITMBC(0x175) EMITMBC(0x1e81) EMITMBC(0x1e83)
       EMITMBC(0x1e85) EMITMBC(0x1e87) EMITMBC(0x1e98)
       return;
@@ -1036,16 +1118,17 @@ static void nfa_emit_equi_class(int c)
       EMIT2('x'); EMITMBC(0x1e8b) EMITMBC(0x1e8d)
       return;
 
-    case 'y': case 0375: case 0377:
-      CASEMBC(0x177) CASEMBC(0x1e8f) CASEMBC(0x1e99)
-      CASEMBC(0x1ef3) CASEMBC(0x1ef7) CASEMBC(0x1ef9)
-      EMIT2('y'); EMIT2(0375); EMIT2(0377); EMITMBC(0x177)
+    case 'y': case y_acute: case y_diaeresis: CASEMBC(0x177)
+              CASEMBC(0x1e8f) CASEMBC(0x1e99) CASEMBC(0x1ef3)
+              CASEMBC(0x1ef7) CASEMBC(0x1ef9)
+      EMIT2('y'); EMIT2(y_acute); EMIT2(y_diaeresis);
+      EMITMBC(0x177)
       EMITMBC(0x1e8f) EMITMBC(0x1e99) EMITMBC(0x1ef3)
       EMITMBC(0x1ef7) EMITMBC(0x1ef9)
       return;
 
     case 'z': CASEMBC(0x17a) CASEMBC(0x17c) CASEMBC(0x17e)
-      CASEMBC(0x1b6) CASEMBC(0x1e91) CASEMBC(0x1e95)
+              CASEMBC(0x1b6) CASEMBC(0x1e91) CASEMBC(0x1e95)
       EMIT2('z'); EMITMBC(0x17a) EMITMBC(0x17c) EMITMBC(0x17e)
       EMITMBC(0x1b6) EMITMBC(0x1e91) EMITMBC(0x1e95)
       return;
@@ -1180,7 +1263,7 @@ static int nfa_regatom(void)
         rc_did_emsg = TRUE;
         return FAIL;
       }
-      EMSGN("INTERNAL: Unknown character class char: %" PRId64, c);
+      IEMSGN("INTERNAL: Unknown character class char: %" PRId64, c);
       return FAIL;
     }
     /* When '.' is followed by a composing char ignore the dot, so that
@@ -1905,7 +1988,7 @@ static int nfa_regpiece(void)
     // The engine is very inefficient (uses too many states) when the maximum
     // is much larger than the minimum and when the maximum is large. Bail out
     // if we can use the other engine.
-    if ((nfa_re_flags & RE_AUTO) && (maxval > minval + 200 || maxval > 500)) {
+    if ((nfa_re_flags & RE_AUTO) && (maxval > 500 || maxval > minval + 200)) {
       return FAIL;
     }
 
@@ -2694,15 +2777,10 @@ static int nfa_max_width(nfa_state_T *startstate, int depth)
     case NFA_ANY:
     case NFA_START_COLL:
     case NFA_START_NEG_COLL:
-      /* matches some character, including composing chars */
-      if (enc_utf8)
-        len += MB_MAXBYTES;
-      else if (has_mbyte)
-        len += 2;
-      else
-        ++len;
+      // Matches some character, including composing chars.
+      len += MB_MAXBYTES;
       if (state->c != NFA_ANY) {
-        /* skip over the characters */
+        // Skip over the characters.
         state = state->out1->out;
         continue;
       }
@@ -3815,23 +3893,27 @@ state_in_list (
   return FALSE;
 }
 
-/*
- * Add "state" and possibly what follows to state list ".".
- * Returns "subs_arg", possibly copied into temp_subs.
- */
+// Offset used for "off" by addstate_here().
+#define ADDSTATE_HERE_OFFSET 10
 
+// Add "state" and possibly what follows to state list ".".
+// Returns "subs_arg", possibly copied into temp_subs.
 static regsubs_T *
 addstate (
     nfa_list_T *l,             /* runtime state list */
     nfa_state_T *state,         /* state to update */
     regsubs_T *subs_arg,      /* pointers to subexpressions */
     nfa_pim_T *pim,           /* postponed look-behind match */
-    int off                            /* byte offset, when -1 go to next line */
-)
+    int off_arg)    /* byte offset, when -1 go to next line */
 {
   int subidx;
+  int off = off_arg;
+  int add_here = FALSE;
+  int listindex = 0;
+  int k;
+  int found = FALSE;
   nfa_thread_T        *thread;
-  lpos_T save_lpos;
+  struct multipos     save_multipos;
   int save_in_use;
   char_u              *save_ptr;
   int i;
@@ -3841,6 +3923,12 @@ addstate (
 #ifdef REGEXP_DEBUG
   int did_print = FALSE;
 #endif
+
+  if (off_arg <= -ADDSTATE_HERE_OFFSET) {
+    add_here = true;
+    off = 0;
+    listindex = -(off_arg + ADDSTATE_HERE_OFFSET);
+  }
 
   switch (state->c) {
   case NFA_NCLOSE:
@@ -3918,13 +4006,28 @@ addstate (
        * lower position is preferred. */
       if (!nfa_has_backref && pim == NULL && !l->has_pim
           && state->c != NFA_MATCH) {
+
+        /* When called from addstate_here() do insert before
+         * existing states. */
+        if (add_here) {
+          for (k = 0; k < l->n && k < listindex; ++k) {
+            if (l->t[k].state->id == state->id) {
+              found = TRUE;
+              break;
+            }
+          }
+        }
+
+        if (!add_here || found) {
 skip_add:
 #ifdef REGEXP_DEBUG
-        nfa_set_code(state->c);
-        fprintf(log_fd, "> Not adding state %d to list %d. char %d: %s\n",
-            abs(state->id), l->id, state->c, code);
+          nfa_set_code(state->c);
+          fprintf(log_fd, "> Not adding state %d to list %d. char %d: %s pim: %s has_pim: %d found: %d\n",
+                  abs(state->id), l->id, state->c, code,
+                  pim == NULL ? "NULL" : "yes", l->has_pim, found);
 #endif
         return subs;
+        }
       }
 
       /* Do not add the state again when it exists with the same
@@ -3980,14 +4083,14 @@ skip_add:
 
   case NFA_SPLIT:
     /* order matters here */
-    subs = addstate(l, state->out, subs, pim, off);
-    subs = addstate(l, state->out1, subs, pim, off);
+    subs = addstate(l, state->out, subs, pim, off_arg);
+    subs = addstate(l, state->out1, subs, pim, off_arg);
     break;
 
   case NFA_EMPTY:
   case NFA_NOPEN:
   case NFA_NCLOSE:
-    subs = addstate(l, state->out, subs, pim, off);
+    subs = addstate(l, state->out, subs, pim, off_arg);
     break;
 
   case NFA_MOPEN:
@@ -4024,15 +4127,13 @@ skip_add:
 
     /* avoid compiler warnings */
     save_ptr = NULL;
-    save_lpos.lnum = 0;
-    save_lpos.col = 0;
+    memset(&save_multipos, 0, sizeof(save_multipos));
 
     /* Set the position (with "off" added) in the subexpression.  Save
      * and restore it when it was in use.  Otherwise fill any gap. */
     if (REG_MULTI) {
       if (subidx < sub->in_use) {
-        save_lpos.lnum = sub->list.multi[subidx].start_lnum;
-        save_lpos.col = sub->list.multi[subidx].start_col;
+        save_multipos = sub->list.multi[subidx];
         save_in_use = -1;
       } else {
         save_in_use = sub->in_use;
@@ -4067,7 +4168,7 @@ skip_add:
       sub->list.line[subidx].start = reginput + off;
     }
 
-    subs = addstate(l, state->out, subs, pim, off);
+    subs = addstate(l, state->out, subs, pim, off_arg);
     /* "subs" may have changed, need to set "sub" again */
     if (state->c >= NFA_ZOPEN && state->c <= NFA_ZOPEN9)
       sub = &subs->synt;
@@ -4075,9 +4176,8 @@ skip_add:
       sub = &subs->norm;
 
     if (save_in_use == -1) {
-      if (REG_MULTI){
-        sub->list.multi[subidx].start_lnum = save_lpos.lnum;
-        sub->list.multi[subidx].start_col = save_lpos.col;
+      if (REG_MULTI) {
+        sub->list.multi[subidx] = save_multipos;
       }
       else
         sub->list.line[subidx].start = save_ptr;
@@ -4090,9 +4190,10 @@ skip_add:
                          ? subs->norm.list.multi[0].end_lnum >= 0
                          : subs->norm.list.line[0].end != NULL)) {
       /* Do not overwrite the position set by \ze. */
-      subs = addstate(l, state->out, subs, pim, off);
+      subs = addstate(l, state->out, subs, pim, off_arg);
       break;
     }
+    // fallthrough
   case NFA_MCLOSE1:
   case NFA_MCLOSE2:
   case NFA_MCLOSE3:
@@ -4130,8 +4231,7 @@ skip_add:
     if (sub->in_use <= subidx)
       sub->in_use = subidx + 1;
     if (REG_MULTI) {
-      save_lpos.lnum = sub->list.multi[subidx].end_lnum;
-      save_lpos.col = sub->list.multi[subidx].end_col;
+      save_multipos = sub->list.multi[subidx];
       if (off == -1) {
         sub->list.multi[subidx].end_lnum = reglnum + 1;
         sub->list.multi[subidx].end_col = 0;
@@ -4145,21 +4245,19 @@ skip_add:
     } else {
       save_ptr = sub->list.line[subidx].end;
       sub->list.line[subidx].end = reginput + off;
-      /* avoid compiler warnings */
-      save_lpos.lnum = 0;
-      save_lpos.col = 0;
+      // avoid compiler warnings
+      memset(&save_multipos, 0, sizeof(save_multipos));
     }
 
-    subs = addstate(l, state->out, subs, pim, off);
+    subs = addstate(l, state->out, subs, pim, off_arg);
     /* "subs" may have changed, need to set "sub" again */
     if (state->c >= NFA_ZCLOSE && state->c <= NFA_ZCLOSE9)
       sub = &subs->synt;
     else
       sub = &subs->norm;
 
-    if (REG_MULTI){
-      sub->list.multi[subidx].end_lnum = save_lpos.lnum;
-      sub->list.multi[subidx].end_col = save_lpos.col;
+    if (REG_MULTI) {
+      sub->list.multi[subidx] = save_multipos;
     }
     else
       sub->list.line[subidx].end = save_ptr;
@@ -4188,8 +4286,10 @@ addstate_here (
   int count;
   int listidx = *ip;
 
-  /* first add the state(s) at the end, so that we know how many there are */
-  addstate(l, state, subs, pim, 0);
+  /* First add the state(s) at the end, so that we know how many there are.
+   * Pass the listidx as offset (avoids adding another argument to
+   * addstate(). */
+  addstate(l, state, subs, pim, -listidx - ADDSTATE_HERE_OFFSET);
 
   /* when "*ip" was at the end of the list, nothing to do */
   if (listidx + 1 == tlen)
@@ -4242,12 +4342,14 @@ static int check_char_class(int class, int c)
 {
   switch (class) {
   case NFA_CLASS_ALNUM:
-    if (c >= 1 && c <= 255 && isalnum(c))
+    if (c >= 1 && c < 128 && isalnum(c)) {
       return OK;
+    }
     break;
   case NFA_CLASS_ALPHA:
-    if (c >= 1 && c <= 255 && isalpha(c))
+    if (c >= 1 && c < 128 && isalpha(c)) {
       return OK;
+    }
     break;
   case NFA_CLASS_BLANK:
     if (c == ' ' || c == '\t')
@@ -4266,24 +4368,27 @@ static int check_char_class(int class, int c)
       return OK;
     break;
   case NFA_CLASS_LOWER:
-    if (vim_islower(c))
+    if (mb_islower(c) && c != 170 && c != 186) {
       return OK;
+    }
     break;
   case NFA_CLASS_PRINT:
     if (vim_isprintc(c))
       return OK;
     break;
   case NFA_CLASS_PUNCT:
-    if (c >= 1 && c <= 255 && ispunct(c))
+    if (c >= 1 && c < 128 && ispunct(c)) {
       return OK;
+    }
     break;
   case NFA_CLASS_SPACE:
     if ((c >= 9 && c <= 13) || (c == ' '))
       return OK;
     break;
   case NFA_CLASS_UPPER:
-    if (vim_isupper(c))
+    if (mb_isupper(c)) {
       return OK;
+    }
     break;
   case NFA_CLASS_XDIGIT:
     if (ascii_isxdigit(c))
@@ -4302,13 +4407,14 @@ static int check_char_class(int class, int c)
       return OK;
     break;
   case NFA_CLASS_ESCAPE:
-    if (c == '\033')
+    if (c == ESC) {
       return OK;
+    }
     break;
 
   default:
-    /* should not be here :P */
-    EMSGN(_(e_ill_char_class), class);
+    // should not be here :P
+    IEMSGN(_(e_ill_char_class), class);
     return FAIL;
   }
   return FAIL;
@@ -4560,9 +4666,11 @@ static int recursive_regmatch(nfa_state_T *state, nfa_pim_T *pim, nfa_regprog_T 
   if (REG_MULTI)
     regline = reg_getline(reglnum);
   reginput = regline + save_reginput_col;
-  nfa_match = save_nfa_match;
+  if (result != NFA_TOO_EXPENSIVE) {
+    nfa_match = save_nfa_match;
+    nfa_listid = save_nfa_listid;
+  }
   nfa_endp = save_nfa_endp;
-  nfa_listid = save_nfa_listid;
 
 #ifdef REGEXP_DEBUG
   log_fd = fopen(NFA_REGEXP_RUN_LOG, "a");
@@ -4744,17 +4852,10 @@ static int failure_chance(nfa_state_T *state, int depth)
  */
 static int skip_to_start(int c, colnr_T *colp)
 {
-  char_u *s;
-
-  /* Used often, do some work to avoid call overhead. */
-  if (!ireg_ic
-      && !has_mbyte
-      )
-    s = vim_strbyte(regline + *colp, c);
-  else
-    s = cstrchr(regline + *colp, c);
-  if (s == NULL)
+  const char_u *const s = cstrchr(regline + *colp, c);
+  if (s == NULL) {
     return FAIL;
+  }
   *colp = (int)(s - regline);
   return OK;
 }
@@ -4781,7 +4882,7 @@ static long find_match_text(colnr_T startcol, int regstart, char_u *match_text)
       int c2_len = PTR2LEN(s2);
       int c2 = PTR2CHAR(s2);
 
-      if ((c1 != c2 && (!ireg_ic || vim_tolower(c1) != vim_tolower(c2)))
+      if ((c1 != c2 && (!rex.reg_ic || mb_tolower(c1) != mb_tolower(c2)))
           || c1_len != c2_len) {
         match = false;
         break;
@@ -4794,13 +4895,13 @@ static long find_match_text(colnr_T startcol, int regstart, char_u *match_text)
         && !(enc_utf8 && utf_iscomposing(PTR2CHAR(s2)))) {
       cleanup_subexpr();
       if (REG_MULTI) {
-        reg_startpos[0].lnum = reglnum;
-        reg_startpos[0].col = col;
-        reg_endpos[0].lnum = reglnum;
-        reg_endpos[0].col = s2 - regline;
+        rex.reg_startpos[0].lnum = reglnum;
+        rex.reg_startpos[0].col = col;
+        rex.reg_endpos[0].lnum = reglnum;
+        rex.reg_endpos[0].col = s2 - regline;
       } else {
-        reg_startp[0] = regline + col;
-        reg_endp[0] = s2;
+        rex.reg_startp[0] = regline + col;
+        rex.reg_endp[0] = s2;
       }
       return 1L;
     }
@@ -5015,8 +5116,8 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
       case NFA_MATCH:
       {
         // If the match ends before a composing characters and
-        // ireg_icombine is not set, that is not really a match.
-        if (enc_utf8 && !ireg_icombine && utf_iscomposing(curc)) {
+        // rex.reg_icombine is not set, that is not really a match.
+        if (enc_utf8 && !rex.reg_icombine && utf_iscomposing(curc)) {
           break;
         }
         nfa_match = true;
@@ -5299,15 +5400,15 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
           int this_class;
 
           // Get class of current and previous char (if it exists).
-          this_class = mb_get_class_buf(reginput, reg_buf);
+          this_class = mb_get_class_tab(reginput, rex.reg_buf->b_chartab);
           if (this_class <= 1) {
             result = false;
           } else if (reg_prev_class() == this_class) {
             result = false;
           }
-        } else if (!vim_iswordc_buf(curc, reg_buf)
+        } else if (!vim_iswordc_buf(curc, rex.reg_buf)
                    || (reginput > regline
-                       && vim_iswordc_buf(reginput[-1], reg_buf))) {
+                       && vim_iswordc_buf(reginput[-1], rex.reg_buf))) {
           result = false;
         }
         if (result) {
@@ -5324,15 +5425,15 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
           int this_class, prev_class;
 
           // Get class of current and previous char (if it exists).
-          this_class = mb_get_class_buf(reginput, reg_buf);
+          this_class = mb_get_class_tab(reginput, rex.reg_buf->b_chartab);
           prev_class = reg_prev_class();
           if (this_class == prev_class
               || prev_class == 0 || prev_class == 1) {
             result = false;
           }
-        } else if (!vim_iswordc_buf(reginput[-1], reg_buf)
+        } else if (!vim_iswordc_buf(reginput[-1], rex.reg_buf)
                    || (reginput[0] != NUL
-                       && vim_iswordc_buf(curc, reg_buf))) {
+                       && vim_iswordc_buf(curc, rex.reg_buf))) {
           result = false;
         }
         if (result) {
@@ -5343,14 +5444,14 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
 
       case NFA_BOF:
         if (reglnum == 0 && reginput == regline
-            && (!REG_MULTI || reg_firstlnum == 1)) {
+            && (!REG_MULTI || rex.reg_firstlnum == 1)) {
           add_here = true;
           add_state = t->state->out;
         }
         break;
 
       case NFA_EOF:
-        if (reglnum == reg_maxline && curc == NUL) {
+        if (reglnum == rex.reg_maxline && curc == NUL) {
           add_here = true;
           add_state = t->state->out;
         }
@@ -5374,7 +5475,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
           // (no preceding character).
           len += mb_char2len(mc);
         }
-        if (ireg_icombine && len == 0) {
+        if (rex.reg_icombine && len == 0) {
           // If \Z was present, then ignore composing characters.
           // When ignoring the base character this always matches.
           if (sta->c != curc) {
@@ -5425,14 +5526,14 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
       }
 
       case NFA_NEWL:
-        if (curc == NUL && !reg_line_lbr && REG_MULTI
-            && reglnum <= reg_maxline) {
+        if (curc == NUL && !rex.reg_line_lbr && REG_MULTI
+            && reglnum <= rex.reg_maxline) {
           go_to_nextline = true;
           // Pass -1 for the offset, which means taking the position
           // at the start of the next line.
           add_state = t->state->out;
           add_off = -1;
-        } else if (curc == '\n' && reg_line_lbr) {
+        } else if (curc == '\n' && rex.reg_line_lbr) {
           // match \n as if it is an ordinary character
           add_state = t->state->out;
           add_off = 1;
@@ -5473,23 +5574,25 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
               result = result_if_matched;
               break;
             }
-            if (ireg_ic) {
-              int curc_low = vim_tolower(curc);
-              int done = FALSE;
+            if (rex.reg_ic) {
+              int curc_low = mb_tolower(curc);
+              int done = false;
 
-              for (; c1 <= c2; ++c1)
-                if (vim_tolower(c1) == curc_low) {
+              for (; c1 <= c2; c1++) {
+                if (mb_tolower(c1) == curc_low) {
                   result = result_if_matched;
                   done = TRUE;
                   break;
                 }
-              if (done)
+              }
+              if (done) {
                 break;
+              }
             }
           } else if (state->c < 0 ? check_char_class(state->c, curc)
                      : (curc == state->c
-                        || (ireg_ic && vim_tolower(curc)
-                            == vim_tolower(state->c)))) {
+                        || (rex.reg_ic && mb_tolower(curc)
+                            == mb_tolower(state->c)))) {
             result = result_if_matched;
             break;
           }
@@ -5536,13 +5639,13 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
         break;
 
       case NFA_KWORD:           //  \k
-        result = vim_iswordp_buf(reginput, reg_buf);
+        result = vim_iswordp_buf(reginput, rex.reg_buf);
         ADD_STATE_IF_MATCH(t->state);
         break;
 
       case NFA_SKWORD:          //  \K
         result = !ascii_isdigit(curc)
-                 && vim_iswordp_buf(reginput, reg_buf);
+                 && vim_iswordp_buf(reginput, rex.reg_buf);
         ADD_STATE_IF_MATCH(t->state);
         break;
 
@@ -5657,24 +5760,24 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
         break;
 
       case NFA_LOWER_IC:        // [a-z]
-        result = ri_lower(curc) || (ireg_ic && ri_upper(curc));
+        result = ri_lower(curc) || (rex.reg_ic && ri_upper(curc));
         ADD_STATE_IF_MATCH(t->state);
         break;
 
       case NFA_NLOWER_IC:       // [^a-z]
         result = curc != NUL
-                 && !(ri_lower(curc) || (ireg_ic && ri_upper(curc)));
+                 && !(ri_lower(curc) || (rex.reg_ic && ri_upper(curc)));
         ADD_STATE_IF_MATCH(t->state);
         break;
 
       case NFA_UPPER_IC:        // [A-Z]
-        result = ri_upper(curc) || (ireg_ic && ri_lower(curc));
+        result = ri_upper(curc) || (rex.reg_ic && ri_lower(curc));
         ADD_STATE_IF_MATCH(t->state);
         break;
 
       case NFA_NUPPER_IC:       // [^A-Z]
         result = curc != NUL
-                 && !(ri_upper(curc) || (ireg_ic && ri_lower(curc)));
+                 && !(ri_upper(curc) || (rex.reg_ic && ri_lower(curc)));
         ADD_STATE_IF_MATCH(t->state);
         break;
 
@@ -5748,13 +5851,15 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
       case NFA_LNUM_GT:
       case NFA_LNUM_LT:
         assert(t->state->val >= 0
-               && !((reg_firstlnum > 0 && reglnum > LONG_MAX - reg_firstlnum)
-                    || (reg_firstlnum <0 && reglnum < LONG_MIN + reg_firstlnum))
-               && reglnum + reg_firstlnum >= 0);
+               && !((rex.reg_firstlnum > 0
+                     && reglnum > LONG_MAX - rex.reg_firstlnum)
+                    || (rex.reg_firstlnum < 0
+                        && reglnum < LONG_MIN + rex.reg_firstlnum))
+               && reglnum + rex.reg_firstlnum >= 0);
         result = (REG_MULTI
                   && nfa_re_num_cmp((uintmax_t)t->state->val,
                                     t->state->c - NFA_LNUM,
-                                    (uintmax_t)(reglnum + reg_firstlnum)));
+                                    (uintmax_t)(reglnum + rex.reg_firstlnum)));
         if (result) {
           add_here = true;
           add_state = t->state->out;
@@ -5790,7 +5895,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
           }
 
           result = false;
-          win_T *wp = reg_win == NULL ? curwin : reg_win;
+          win_T *wp = rex.reg_win == NULL ? curwin : rex.reg_win;
           if (op == 1 && col - 1 > t->state->val && col > 100) {
             long ts = wp->w_buffer->b_p_ts;
 
@@ -5817,18 +5922,18 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
       case NFA_MARK_GT:
       case NFA_MARK_LT:
       {
-        pos_T   *pos = getmark_buf(reg_buf, t->state->val, FALSE);
+        pos_T *pos = getmark_buf(rex.reg_buf, t->state->val, false);
 
         // Compare the mark position to the match position.
         result = (pos != NULL                        // mark doesn't exist
                   && pos->lnum > 0          // mark isn't set in reg_buf
-                  && (pos->lnum == reglnum + reg_firstlnum
+                  && (pos->lnum == reglnum + rex.reg_firstlnum
                       ? (pos->col == (colnr_T)(reginput - regline)
                          ? t->state->c == NFA_MARK
                          : (pos->col < (colnr_T)(reginput - regline)
                             ? t->state->c == NFA_MARK_GT
                             : t->state->c == NFA_MARK_LT))
-                      : (pos->lnum < reglnum + reg_firstlnum
+                      : (pos->lnum < reglnum + rex.reg_firstlnum
                          ? t->state->c == NFA_MARK_GT
                          : t->state->c == NFA_MARK_LT)));
         if (result) {
@@ -5839,10 +5944,10 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
       }
 
       case NFA_CURSOR:
-        result = (reg_win != NULL
-                  && (reglnum + reg_firstlnum == reg_win->w_cursor.lnum)
+        result = (rex.reg_win != NULL
+                  && (reglnum + rex.reg_firstlnum == rex.reg_win->w_cursor.lnum)
                   && ((colnr_T)(reginput - regline)
-                      == reg_win->w_cursor.col));
+                      == rex.reg_win->w_cursor.col));
         if (result) {
           add_here = true;
           add_state = t->state->out;
@@ -5887,17 +5992,19 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
         int c = t->state->c;
 
 #ifdef REGEXP_DEBUG
-        if (c < 0)
-          EMSGN("INTERNAL: Negative state char: %" PRId64, c);
+        if (c < 0) {
+          IEMSGN("INTERNAL: Negative state char: %" PRId64, c);
+        }
 #endif
         result = (c == curc);
 
-        if (!result && ireg_ic)
-          result = vim_tolower(c) == vim_tolower(curc);
+        if (!result && rex.reg_ic) {
+          result = mb_tolower(c) == mb_tolower(curc);
+        }
 
-        // If ireg_icombine is not set only skip over the character
+        // If rex.reg_icombine is not set only skip over the character
         // itself.  When it is set skip over composing characters.
-        if (result && enc_utf8 && !ireg_icombine) {
+        if (result && enc_utf8 && !rex.reg_icombine) {
           clen = utf_ptr2len(reginput);
         }
 
@@ -6005,8 +6112,8 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
         && ((toplevel
              && reglnum == 0
              && clen != 0
-             && (ireg_maxcol == 0
-                 || (colnr_T)(reginput - regline) < ireg_maxcol))
+             && (rex.reg_maxcol == 0
+                 || (colnr_T)(reginput - regline) < rex.reg_maxcol))
             || (nfa_endp != NULL
                 && (REG_MULTI
                     ? (reglnum < nfa_endp->se_u.pos.lnum
@@ -6041,8 +6148,8 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start,
             // Checking if the required start character matches is
             // cheaper than adding a state that won't match.
             c = PTR2CHAR(reginput + clen);
-            if (c != prog->regstart && (!ireg_ic || vim_tolower(c)
-                                        != vim_tolower(prog->regstart))) {
+            if (c != prog->regstart && (!rex.reg_ic || mb_tolower(c)
+                                        != mb_tolower(prog->regstart))) {
 #ifdef REGEXP_DEBUG
               fprintf(log_fd,
                   "  Skipping start state, regstart does not match\n");
@@ -6167,34 +6274,37 @@ static long nfa_regtry(nfa_regprog_T *prog, colnr_T col, proftime_T *tm)
   cleanup_subexpr();
   if (REG_MULTI) {
     for (i = 0; i < subs.norm.in_use; i++) {
-      reg_startpos[i].lnum = subs.norm.list.multi[i].start_lnum;
-      reg_startpos[i].col = subs.norm.list.multi[i].start_col;
+      rex.reg_startpos[i].lnum = subs.norm.list.multi[i].start_lnum;
+      rex.reg_startpos[i].col = subs.norm.list.multi[i].start_col;
 
-      reg_endpos[i].lnum = subs.norm.list.multi[i].end_lnum;
-      reg_endpos[i].col = subs.norm.list.multi[i].end_col;
+      rex.reg_endpos[i].lnum = subs.norm.list.multi[i].end_lnum;
+      rex.reg_endpos[i].col = subs.norm.list.multi[i].end_col;
     }
 
-    if (reg_startpos[0].lnum < 0) {
-      reg_startpos[0].lnum = 0;
-      reg_startpos[0].col = col;
+    if (rex.reg_startpos[0].lnum < 0) {
+      rex.reg_startpos[0].lnum = 0;
+      rex.reg_startpos[0].col = col;
     }
-    if (reg_endpos[0].lnum < 0) {
-      /* pattern has a \ze but it didn't match, use current end */
-      reg_endpos[0].lnum = reglnum;
-      reg_endpos[0].col = (int)(reginput - regline);
-    } else
-      /* Use line number of "\ze". */
-      reglnum = reg_endpos[0].lnum;
+    if (rex.reg_endpos[0].lnum < 0) {
+      // pattern has a \ze but it didn't match, use current end
+      rex.reg_endpos[0].lnum = reglnum;
+      rex.reg_endpos[0].col = (int)(reginput - regline);
+    } else {
+      // Use line number of "\ze".
+      reglnum = rex.reg_endpos[0].lnum;
+    }
   } else {
     for (i = 0; i < subs.norm.in_use; i++) {
-      reg_startp[i] = subs.norm.list.line[i].start;
-      reg_endp[i] = subs.norm.list.line[i].end;
+      rex.reg_startp[i] = subs.norm.list.line[i].start;
+      rex.reg_endp[i] = subs.norm.list.line[i].end;
     }
 
-    if (reg_startp[0] == NULL)
-      reg_startp[0] = regline + col;
-    if (reg_endp[0] == NULL)
-      reg_endp[0] = reginput;
+    if (rex.reg_startp[0] == NULL) {
+      rex.reg_startp[0] = regline + col;
+    }
+    if (rex.reg_endp[0] == NULL) {
+      rex.reg_endp[0] = reginput;
+    }
   }
 
   /* Package any found \z(...\) matches for export. Default is none. */
@@ -6248,14 +6358,14 @@ static long nfa_regexec_both(char_u *line, colnr_T startcol, proftime_T *tm)
   colnr_T col = startcol;
 
   if (REG_MULTI) {
-    prog = (nfa_regprog_T *)reg_mmatch->regprog;
-    line = reg_getline((linenr_T)0);        /* relative to the cursor */
-    reg_startpos = reg_mmatch->startpos;
-    reg_endpos = reg_mmatch->endpos;
+    prog = (nfa_regprog_T *)rex.reg_mmatch->regprog;
+    line = reg_getline((linenr_T)0);  // relative to the cursor
+    rex.reg_startpos = rex.reg_mmatch->startpos;
+    rex.reg_endpos = rex.reg_mmatch->endpos;
   } else {
-    prog = (nfa_regprog_T *)reg_match->regprog;
-    reg_startp = reg_match->startp;
-    reg_endp = reg_match->endp;
+    prog = (nfa_regprog_T *)rex.reg_match->regprog;
+    rex.reg_startp = rex.reg_match->startp;
+    rex.reg_endp = rex.reg_match->endp;
   }
 
   /* Be paranoid... */
@@ -6264,15 +6374,17 @@ static long nfa_regexec_both(char_u *line, colnr_T startcol, proftime_T *tm)
     goto theend;
   }
 
-  /* If pattern contains "\c" or "\C": overrule value of ireg_ic */
-  if (prog->regflags & RF_ICASE)
-    ireg_ic = TRUE;
-  else if (prog->regflags & RF_NOICASE)
-    ireg_ic = FALSE;
+  // If pattern contains "\c" or "\C": overrule value of rex.reg_ic
+  if (prog->regflags & RF_ICASE) {
+    rex.reg_ic = true;
+  } else if (prog->regflags & RF_NOICASE) {
+    rex.reg_ic = false;
+  }
 
-  /* If pattern contains "\Z" overrule value of ireg_icombine */
-  if (prog->regflags & RF_ICOMBINE)
-    ireg_icombine = TRUE;
+  // If pattern contains "\Z" overrule value of rex.reg_icombine
+  if (prog->regflags & RF_ICOMBINE) {
+    rex.reg_icombine = true;
+  }
 
   regline = line;
   reglnum = 0;      /* relative to line */
@@ -6301,17 +6413,17 @@ static long nfa_regexec_both(char_u *line, colnr_T startcol, proftime_T *tm)
     if (skip_to_start(prog->regstart, &col) == FAIL)
       return 0L;
 
-    /* If match_text is set it contains the full text that must match.
-     * Nothing else to try. Doesn't handle combining chars well. */
-    if (prog->match_text != NULL
-        && !ireg_icombine
-        )
+    // If match_text is set it contains the full text that must match.
+    // Nothing else to try. Doesn't handle combining chars well.
+    if (prog->match_text != NULL && !rex.reg_icombine) {
       return find_match_text(col, prog->regstart, prog->match_text);
+    }
   }
 
-  /* If the start column is past the maximum column: no need to try. */
-  if (ireg_maxcol > 0 && col >= ireg_maxcol)
+  // If the start column is past the maximum column: no need to try.
+  if (rex.reg_maxcol > 0 && col >= rex.reg_maxcol) {
     goto theend;
+  }
 
   nstate = prog->nstate;
   for (i = 0; i < nstate; ++i) {
@@ -6351,12 +6463,13 @@ static regprog_T *nfa_regcomp(char_u *expr, int re_flags)
    * (and count its size). */
   postfix = re2post();
   if (postfix == NULL) {
-    /* TODO: only give this error for debugging? */
-    if (post_ptr >= post_end)
-      EMSGN("Internal error: estimated max number "
-            "of states insufficient: %" PRId64,
-            post_end - post_start);
-    goto fail;              /* Cascaded (syntax?) error */
+    // TODO(vim): only give this error for debugging?
+    if (post_ptr >= post_end) {
+      IEMSGN("Internal error: estimated max number "
+             "of states insufficient: %" PRId64,
+             post_end - post_start);
+    }
+    goto fail;              // Cascaded (syntax?) error
   }
 
   /*
@@ -6463,15 +6576,15 @@ nfa_regexec_nl (
     bool line_lbr
 )
 {
-  reg_match = rmp;
-  reg_mmatch = NULL;
-  reg_maxline = 0;
-  reg_line_lbr = line_lbr;
-  reg_buf = curbuf;
-  reg_win = NULL;
-  ireg_ic = rmp->rm_ic;
-  ireg_icombine = FALSE;
-  ireg_maxcol = 0;
+  rex.reg_match = rmp;
+  rex.reg_mmatch = NULL;
+  rex.reg_maxline = 0;
+  rex.reg_line_lbr = line_lbr;
+  rex.reg_buf = curbuf;
+  rex.reg_win = NULL;
+  rex.reg_ic = rmp->rm_ic;
+  rex.reg_icombine = false;
+  rex.reg_maxcol = 0;
   return nfa_regexec_both(line, col, NULL);
 }
 
@@ -6512,16 +6625,16 @@ nfa_regexec_nl (
 static long nfa_regexec_multi(regmmatch_T *rmp, win_T *win, buf_T *buf,
                               linenr_T lnum, colnr_T col, proftime_T *tm)
 {
-  reg_match = NULL;
-  reg_mmatch = rmp;
-  reg_buf = buf;
-  reg_win = win;
-  reg_firstlnum = lnum;
-  reg_maxline = reg_buf->b_ml.ml_line_count - lnum;
-  reg_line_lbr = FALSE;
-  ireg_ic = rmp->rmm_ic;
-  ireg_icombine = FALSE;
-  ireg_maxcol = rmp->rmm_maxcol;
+  rex.reg_match = NULL;
+  rex.reg_mmatch = rmp;
+  rex.reg_buf = buf;
+  rex.reg_win = win;
+  rex.reg_firstlnum = lnum;
+  rex.reg_maxline = rex.reg_buf->b_ml.ml_line_count - lnum;
+  rex.reg_line_lbr = false;
+  rex.reg_ic = rmp->rmm_ic;
+  rex.reg_icombine = false;
+  rex.reg_maxcol = rmp->rmm_maxcol;
 
   return nfa_regexec_both(NULL, col, tm);
 }

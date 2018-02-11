@@ -1,25 +1,115 @@
-## Source code overview
+Nvim core
+=========
 
-Since Neovim has inherited most code from Vim, some information in [its
-README](https://raw.githubusercontent.com/vim/vim/master/src/README.txt) still
-applies.
+Module-specific details are documented at the top of each module (`terminal.c`,
+`screen.c`, …).
 
-This document aims to give a high level overview of how Neovim works internally,
-focusing on parts that are different from Vim. Currently this is still a work in
-progress, especially because I have avoided adding too many details about parts
-that are constantly changing. As the code becomes more organized and stable,
-this document will be updated to reflect the changes.
+See `:help dev` for guidelines.
 
-If you are looking for module-specific details, it is best to read the source
-code. Some files are extensively commented at the top (e.g. terminal.c,
-screen.c).
+Filename conventions
+--------------------
 
-### Top-level program loops
+The source files use extensions to hint about their purpose.
 
-First let's understand what a Vim-like program does by analyzing the workflow of
-a typical editing session:
+- `*.c`, `*.generated.c` - full C files, with all includes, etc.
+- `*.c.h` - parametrized C files, contain all necessary includes, but require
+  defining macros before actually using. Example: `typval_encode.c.h`
+- `*.h` - full headers, with all includes. Does *not* apply to `*.generated.h`.
+- `*.h.generated.h` - exported functions’ declarations.
+- `*.c.generated.h` - static functions’ declarations.
 
-01. Vim dispays the welcome screen
+Logs
+----
+
+Low-level log messages sink to `$NVIM_LOG_FILE`.
+
+You can use `LOG_CALLSTACK();` anywhere in the source to log the current
+stacktrace. To log in an alternate file, e.g. stderr, use
+`LOG_CALLSTACK_TO_FILE(FILE*)`. (Currently Linux-only.)
+
+UI events are logged at level 0 (`DEBUG_LOG_LEVEL`).
+
+    rm -rf build/
+    make CMAKE_EXTRA_FLAGS="-DMIN_LOG_LEVEL=0"
+
+Build with ASAN
+---------------
+
+Building Nvim with Clang sanitizers (Address Sanitizer: ASan, Undefined
+Behavior Sanitizer: UBSan, Memory Sanitizer: MSan, Thread Sanitizer: TSan) is
+a good way to catch undefined behavior, leaks and other errors as soon as they
+happen.  It's significantly faster than Valgrind.
+
+Requires clang 3.4 or later:
+
+    clang --version
+
+Build Nvim with sanitizer instrumentation:
+
+    CC=clang make CMAKE_EXTRA_FLAGS="-DCLANG_ASAN_UBSAN=ON"
+
+Create a directory to store logs:
+
+    mkdir -p "$HOME/logs"
+
+Enable the sanitizer(s) via these environment variables:
+
+    # Change to detect_leaks=1 to detect memory leaks (slower).
+    export ASAN_OPTIONS="detect_leaks=0:log_path=$HOME/logs/asan"
+    export ASAN_SYMBOLIZER_PATH=/usr/lib/llvm-5.0/bin/llvm-symbolizer
+
+    export MSAN_SYMBOLIZER_PATH=/usr/lib/llvm-5.0/bin/llvm-symbolizer
+    export TSAN_OPTIONS="external_symbolizer_path=/usr/lib/llvm-5.0/bin/llvm-symbolizer log_path=${HOME}/logs/tsan"
+
+Logs will be written to `${HOME}/logs/*san.PID`.
+
+TUI debugging
+-------------
+
+### TUI troubleshoot
+
+Nvim logs its internal terminfo state at 'verbose' level 3.  This makes it
+possible to see exactly what terminfo values Nvim is using on any system.
+
+    nvim -V3log
+
+### TUI trace
+
+The ancient `script` command is still the "state of the art" for tracing
+terminal behavior. The libvterm `vterm-dump` utility formats the result for
+human-readability.
+
+Record a Nvim terminal session and format it with `vterm-dump`:
+
+    script foo
+    ./build/bin/nvim -u NONE
+    # Exit the script session with CTRL-d
+
+    # Use `vterm-dump` utility to format the result.
+    ./.deps/usr/bin/vterm-dump foo > bar
+
+Then you can compare `bar` with another session, to debug TUI behavior.
+
+### TUI redraw
+
+Set the 'writedelay' option to see where and when the UI is painted.
+
+    :set writedelay=1
+
+### Terminal reference
+
+- `man terminfo`
+- http://bazaar.launchpad.net/~libvterm/libvterm/trunk/view/head:/doc/seqs.txt
+- http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+
+Nvim lifecycle
+--------------
+
+Following describes how Nvim processes input.
+
+Consider a typical Vim-like editing session:
+
+01. Vim displays the welcome screen
 02. User types: `:`
 03. Vim enters command-line mode
 04. User types: `edit README.txt<CR>`
@@ -41,16 +131,14 @@ a typical editing session:
 21. User types: `word<ESC>`
 22. Vim inserts "word" at the beginning and returns to normal mode
 
-Note that we have split user actions into sequences of inputs that change the
-state of the editor. While there's no documentation about a "g command
-mode" (step 16), internally it is implemented similarly to "operator-pending
-mode".
+Note that we split user actions into sequences of inputs that change the state
+of the editor. While there's no documentation about a "g command mode" (step
+16), internally it is implemented similarly to "operator-pending mode".
 
-From this we can see that Vim has the behavior of a input-driven state
-machine (more specifically, a pushdown automaton since it requires a stack for
+From this we can see that Vim has the behavior of an input-driven state machine
+(more specifically, a pushdown automaton since it requires a stack for
 transitioning back from states). Assuming each state has a callback responsible
-for handling keys, this pseudocode (a python-like language) shows a good
-representation of the main program loop:
+for handling keys, this pseudocode represents the main program loop:
 
 ```py
 def state_enter(state_callback, data):
@@ -126,12 +214,11 @@ def insert_state(data, key):
   return true
 ```
 
-While the actual code is much more complicated, the above gives an idea of how
-Neovim is organized internally. Some states like the `g_command_state` or
-`get_operator_count_state` do not have a dedicated `state_enter` callback, but
-are implicitly embedded into other states (this will change later as we continue
-the refactoring effort). To start reading the actual code, here's the
-recommended order:
+The above gives an idea of how Nvim is organized internally. Some states like
+the `g_command_state` or `get_operator_count_state` do not have a dedicated
+`state_enter` callback, but are implicitly embedded into other states (this
+will change later as we continue the refactoring effort). To start reading the
+actual code, here's the recommended order:
 
 1. `state_enter()` function (state.c). This is the actual program loop,
    note that a `VimState` structure is used, which contains function pointers
@@ -152,16 +239,17 @@ modes managed by the `state_enter` loop:
 - insert mode: `insert_{enter,check,execute}()`(`edit.c`)
 - terminal mode: `terminal_{enter,execute}()`(`terminal.c`)
 
-### Async event support
+Async event support
+-------------------
 
-One of the features Neovim added is the support for handling arbitrary
+One of the features Nvim added is the support for handling arbitrary
 asynchronous events, which can include:
 
-- msgpack-rpc requests
+- RPC requests
 - job control callbacks
-- timers (not implemented yet but the support code is already there)
+- timers
 
-Neovim implements this functionality by entering another event loop while
+Nvim implements this functionality by entering another event loop while
 waiting for characters, so instead of:
 
 ```py
@@ -171,7 +259,7 @@ def state_enter(state_callback, data):
   while state_callback(data, key)   # invoke the callback for the current state
 ```
 
-Neovim program loop is more like:
+Nvim program loop is more like:
 
 ```py
 def state_enter(state_callback, data):
@@ -182,9 +270,9 @@ def state_enter(state_callback, data):
 
 where `event` is something the operating system delivers to us, including (but
 not limited to) user input. The `read_next_event()` part is internally
-implemented by libuv, the platform layer used by Neovim.
+implemented by libuv, the platform layer used by Nvim.
 
-Since Neovim inherited its code from Vim, the states are not prepared to receive
+Since Nvim inherited its code from Vim, the states are not prepared to receive
 "arbitrary events", so we use a special key to represent those (When a state
 receives an "arbitrary event", it normally doesn't do anything other update the
 screen).

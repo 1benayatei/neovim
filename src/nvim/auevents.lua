@@ -19,6 +19,8 @@ return {
     'BufWriteCmd',            -- write buffer using command
     'BufWritePost',           -- after writing a buffer
     'BufWritePre',            -- before writing a buffer
+    'CmdLineEnter',           -- after entering cmdline mode
+    'CmdLineLeave',           -- before leaving cmdline mode
     'CmdUndefined',           -- command undefined
     'CmdWinEnter',            -- after entering the cmdline window
     'CmdWinLeave',            -- before leaving the cmdline window
@@ -28,6 +30,7 @@ return {
     'CursorHoldI',            -- idem, in Insert mode
     'CursorMoved',            -- cursor was moved
     'CursorMovedI',           -- cursor was moved in Insert mode
+    'DirChanged',             -- directory changed
     'EncodingChanged',        -- after changing the 'encoding' option
     'FileAppendCmd',          -- append to a file using command
     'FileAppendPost',         -- after appending to a file
@@ -89,6 +92,7 @@ return {
     'VimLeave',               -- before exiting Vim
     'VimLeavePre',            -- before exiting Vim and writing ShaDa file
     'VimResized',             -- after Vim window was resized
+    'WinNew',                 -- when entering a new window
     'WinEnter',               -- after entering a window
     'WinLeave',               -- before leaving a window
   },
@@ -101,6 +105,7 @@ return {
   -- List of neovim-specific events or aliases for the purpose of generating 
   -- syntax file
   neovim_specific = {
+    DirChanged=true,
     TabClosed=true,
     TabNew=true,
     TabNewEntered=true,

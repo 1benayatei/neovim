@@ -1,4 +1,3 @@
--- Sanity checks for tabpage_* API calls via msgpack-rpc
 local helpers = require('test.functional.helpers')(after_each)
 local clear, nvim, tabpage, curtab, eq, ok =
   helpers.clear, helpers.nvim, helpers.tabpage, helpers.curtab, helpers.eq,
@@ -7,8 +6,10 @@ local curtabmeths = helpers.curtabmeths
 local funcs = helpers.funcs
 local request = helpers.request
 local NIL = helpers.NIL
+local meth_pcall = helpers.meth_pcall
+local command = helpers.command
 
-describe('tabpage_* functions', function()
+describe('api/tabpage', function()
   before_each(clear)
 
   describe('list_wins and get_win', function()
@@ -33,6 +34,11 @@ describe('tabpage_* functions', function()
       eq(1, funcs.exists('t:lua'))
       curtabmeths.del_var('lua')
       eq(0, funcs.exists('t:lua'))
+      eq({false, 'Key does not exist: lua'}, meth_pcall(curtabmeths.del_var, 'lua'))
+      curtabmeths.set_var('lua', 1)
+      command('lockvar t:lua')
+      eq({false, 'Key is locked: lua'}, meth_pcall(curtabmeths.del_var, 'lua'))
+      eq({false, 'Key is locked: lua'}, meth_pcall(curtabmeths.set_var, 'lua', 1))
     end)
 
     it('tabpage_set_var returns the old value', function()
@@ -48,6 +54,22 @@ describe('tabpage_* functions', function()
       eq(NIL,  request('tabpage_set_var', 0, 'lua', val1))
       eq(val1, request('tabpage_set_var', 0, 'lua', val2))
       eq(val2, request('tabpage_del_var', 0, 'lua'))
+    end)
+  end)
+
+  describe('get_number', function()
+    it('works', function()
+      local tabs = nvim('list_tabpages')
+      eq(1, tabpage('get_number', tabs[1]))
+
+      nvim('command', 'tabnew')
+      local tab1, tab2 = unpack(nvim('list_tabpages'))
+      eq(1, tabpage('get_number', tab1))
+      eq(2, tabpage('get_number', tab2))
+
+      nvim('command', '-tabmove')
+      eq(2, tabpage('get_number', tab1))
+      eq(1, tabpage('get_number', tab2))
     end)
   end)
 

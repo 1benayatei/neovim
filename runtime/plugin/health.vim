@@ -1,1 +1,1 @@
-command! -nargs=* CheckHealth call health#check([<f-args>])
+autocmd CmdUndefined CheckHealth checkhealth

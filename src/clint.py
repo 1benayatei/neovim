@@ -182,6 +182,7 @@ _ERROR_CATEGORIES = [
     'build/include_order',
     'build/printf_format',
     'build/storage_class',
+    'build/useless_fattr',
     'readability/alt_tokens',
     'readability/bool',
     'readability/braces',
@@ -200,6 +201,7 @@ _ERROR_CATEGORIES = [
     'runtime/printf',
     'runtime/printf_format',
     'runtime/threadsafe_fn',
+    'runtime/deprecated',
     'syntax/parenthesis',
     'whitespace/alignment',
     'whitespace/blank_line',
@@ -571,7 +573,8 @@ class _CppLintState(object):
         for category, count in self.errors_by_category.items():
             sys.stderr.write('Category \'%s\' errors found: %d\n' %
                              (category, count))
-        sys.stderr.write('Total errors found: %d\n' % self.error_count)
+        if self.error_count:
+            sys.stderr.write('Total errors found: %d\n' % self.error_count)
 
     def SuppressErrorsFrom(self, fname):
         """Open file and read a list of suppressed errors from it"""
@@ -1224,6 +1227,10 @@ def CheckForHeaderGuard(filename, lines, error):
       lines: An array of strings, each representing a line of the file.
       error: The function to call with any errors found.
     """
+    if filename.endswith('.c.h') or FileInfo(filename).RelativePath() in set((
+        'func_attr.h',
+    )):
+        return
 
     cppvar = GetHeaderGuardCPPVariable(filename)
 
@@ -2117,8 +2124,10 @@ def CheckExpressionAlignment(filename, clean_lines, linenum, error, startpos=0):
                     + (level_starts[depth][2] == '{')):
                     if depth not in ignore_error_levels:
                         error(filename, linenum, 'whitespace/alignment', 2,
-                              'Inner expression should be aligned '
-                              'as opening brace + 1 (+ 2 in case of {)')
+                              ('Inner expression should be aligned '
+                               'as opening brace + 1 (+ 2 in case of {{). '
+                               'Relevant opening is on line {0!r}').format(
+                                   level_starts[depth][3]))
             prev_line_start = pos
         elif brace == 'e':
             pass
@@ -2135,7 +2144,8 @@ def CheckExpressionAlignment(filename, clean_lines, linenum, error, startpos=0):
                     ignore_error_levels.add(depth)
                 line_ended_with_opening = (
                     pos == len(line) - 2 * (line.endswith(' \\')) - 1)
-                level_starts[depth] = (pos, line_ended_with_opening, brace)
+                level_starts[depth] = (pos, line_ended_with_opening, brace,
+                                       linenum)
                 if line_ended_with_opening:
                     depth_line_starts[depth] = (prev_line_start, brace)
             else:
@@ -2268,11 +2278,14 @@ def CheckSpacing(filename, clean_lines, linenum, nesting_state, error):
                 # //!<  Header comment
                 # or they begin with multiple slashes followed by a space:
                 # //////// Header comment
+                # or they are Vim {{{ fold markers
                 match = (Search(r'[=/-]{4,}\s*$', line[commentend:]) or
                          Search(r'^/$', line[commentend:]) or
                          Search(r'^!< ', line[commentend:]) or
                          Search(r'^/< ', line[commentend:]) or
-                         Search(r'^/+ ', line[commentend:]))
+                         Search(r'^/+ ', line[commentend:]) or
+                         Search(r'^(?:\{{3}|\}{3})\d*(?: |$)',
+                                line[commentend:]))
                 if not match:
                     error(filename, linenum, 'whitespace/comments', 4,
                           'Should have a space between // and comment')
@@ -2516,6 +2529,13 @@ def CheckSpacing(filename, clean_lines, linenum, nesting_state, error):
 
     cast_line = re.sub(r'^# *define +\w+\([^)]*\)', '', line)
     match = Search(r'(?<!\bkvec_t)'
+                   r'(?<!\bkvec_withinit_t)'
+                   r'(?<!\bklist_t)'
+                   r'(?<!\bkliter_t)'
+                   r'(?<!\bkhash_t)'
+                   r'(?<!\bkbtree_t)'
+                   r'(?<!\bkbitr_t)'
+                   r'(?<!\bPMap)'
                    r'\((?:const )?(?:struct )?[a-zA-Z_]\w*(?: *\*(?:const)?)*\)'
                    r' +'
                    r'-?(?:\*+|&)?(?:\w+|\+\+|--|\()', cast_line)
@@ -2560,22 +2580,51 @@ def CheckBraces(filename, clean_lines, linenum, error):
 
     line = clean_lines.elided[linenum]        # get rid of comments and strings
 
-    if not (filename.endswith('.c') or filename.endswith('.h')):
-        if Match(r'\s*{\s*$', line):
-            # We allow an open brace to start a line in the case where someone
-            # is using braces in a block to explicitly create a new scope, which
-            # is commonly used to control the lifetime of stack-allocated
-            # variables.  Braces are also used for brace initializers inside
-            # function calls.  We don't detect this perfectly: we just don't
-            # complain if the last non-whitespace character on the previous
-            # non-blank line is ',', ';', ':', '(', '{', or '}', or if the
-            # previous line starts a preprocessor block.
-            prevline = GetPreviousNonBlankLine(clean_lines, linenum)[0]
-            if (not Search(r'[,;:}{(]\s*$', prevline) and
-                    not Match(r'\s*#', prevline)):
-                error(filename, linenum, 'whitespace/braces', 4,
-                      '{ should almost always be at the end'
-                      ' of the previous line')
+    if Match(r'\s+{\s*$', line):
+        # We allow an open brace to start a line in the case where someone
+        # is using braces in a block to explicitly create a new scope, which
+        # is commonly used to control the lifetime of stack-allocated
+        # variables.  Braces are also used for brace initializers inside
+        # function calls.  We don't detect this perfectly: we just don't
+        # complain if the last non-whitespace character on the previous
+        # non-blank line is ',', ';', ':', '(', '{', or '}', or if the
+        # previous line starts a preprocessor block.
+        prevline = GetPreviousNonBlankLine(clean_lines, linenum)[0]
+        if (not Search(r'[,;:}{(]\s*$', prevline) and
+                not Match(r'\s*#', prevline)):
+            error(filename, linenum, 'whitespace/braces', 4,
+                    '{ should almost always be at the end'
+                    ' of the previous line')
+
+    # Brace must appear after function signature, but on the *next* line
+    if Match(r'^(?:\w+(?: ?\*+)? )+\w+\(', line):
+        pos = line.find('(')
+        (endline, end_linenum, endpos) = CloseExpression(
+            clean_lines, linenum, pos)
+        if endline.endswith('{'):
+            error(filename, end_linenum, 'readability/braces', 5,
+                  'Brace starting function body must be placed on its own line')
+        else:
+            func_start_linenum = end_linenum + 1
+            while not clean_lines.lines[func_start_linenum] == '{':
+                attrline = Match(r'^((?!# *define).*?)(?:FUNC_ATTR|FUNC_API|REAL_FATTR)_\w+(?:\(\d+(, \d+)*\))?',
+                                 clean_lines.lines[func_start_linenum])
+                if attrline:
+                    if len(attrline.group(1)) != 2:
+                        error(filename, func_start_linenum,
+                              'whitespace/indent', 5,
+                              'Function attribute line should have 2-space '
+                              'indent')
+
+                    func_start_linenum += 1
+                else:
+                    func_start = clean_lines.lines[func_start_linenum]
+                    if not func_start.startswith('enum ') and func_start.endswith('{'):
+                        error(filename, func_start_linenum,
+                              'readability/braces', 5,
+                              'Brace starting function body must be placed '
+                              'after the function signature')
+                    break
 
     # An else clause should be on the same line as the preceding closing brace.
     # If there is no preceding closing brace, there should be one.
@@ -3001,9 +3050,10 @@ def CheckIncludeLine(filename, clean_lines, linenum, include_state, error):
         include = match.group(2)
         is_system = (match.group(1) == '<')
         if include in include_state:
-            error(filename, linenum, 'build/include', 4,
-                  '"%s" already included at %s:%s' %
-                  (include, filename, include_state[include]))
+            if is_system or not include.endswith('.c.h'):
+                error(filename, linenum, 'build/include', 4,
+                      '"%s" already included at %s:%s' %
+                      (include, filename, include_state[include]))
         else:
             include_state[include] = linenum
 
@@ -3140,11 +3190,28 @@ def CheckLanguage(filename, clean_lines, linenum, file_extension,
     # Check if some verboten C functions are being used.
     if Search(r'\bsprintf\b', line):
         error(filename, linenum, 'runtime/printf', 5,
-              'Never use sprintf.  Use snprintf instead.')
-    match = Search(r'\b(strcpy|strcat)\b', line)
+              'Use snprintf instead of sprintf.')
+    match = Search(r'\b(strncpy|STRNCPY)\b', line)
     if match:
         error(filename, linenum, 'runtime/printf', 4,
-              'Almost always, snprintf is better than %s' % match.group(1))
+              'Use xstrlcpy or snprintf instead of %s (unless this is from Vim)'
+              % match.group(1))
+    match = Search(r'\b(strcpy)\b', line)
+    if match:
+        error(filename, linenum, 'runtime/printf', 4,
+              'Use xstrlcpy or snprintf instead of %s' % match.group(1))
+    match = Search(r'\b(STRNCAT|strncat|strcat|vim_strcat)\b', line)
+    if match:
+        error(filename, linenum, 'runtime/printf', 4,
+              'Use xstrlcat or snprintf instead of %s' % match.group(1))
+    if not Search(r'eval/typval\.[ch]$', filename):
+        match = Search(r'(?:\.|->)'
+                       r'(?:lv_(?:first|last|refcount|len|watch|idx(?:_item)?'
+                                r'|copylist|lock)'
+                          r'|li_(?:next|prev|tv))\b', line)
+        if match:
+            error(filename, linenum, 'runtime/deprecated', 4,
+                  'Accessing list_T internals directly is prohibited')
 
     # Check for suspicious usage of "if" like
     # } if (a == b) {
@@ -3408,8 +3475,9 @@ def ProcessFile(filename, vlevel, extra_check_functions=[]):
     # When reading from stdin, the extension is unknown, so no cpplint tests
     # should rely on the extension.
     if filename != '-' and file_extension not in _valid_extensions:
-        sys.stderr.write('Ignoring %s; not a valid file name '
-                         '(%s)\n' % (filename, ', '.join(_valid_extensions)))
+        sys.stderr.write('Ignoring {}; only linting {} files\n'.format(
+                filename,
+                ', '.join('.{}'.format(ext) for ext in _valid_extensions)))
     else:
         ProcessFileData(filename, file_extension, lines, Error,
                         extra_check_functions)
@@ -3539,7 +3607,7 @@ def main():
 if __name__ == '__main__':
     main()
 
-# vim: ts=4 sts=4 sw=4
+# vim: ts=4 sts=4 sw=4 foldmarker=▶,▲
 
 # Ignore "too complex" warnings when using pymode.
 # pylama:ignore=C901

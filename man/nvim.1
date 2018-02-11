@@ -371,26 +371,6 @@ See
 Used to set the 'shell' option, which determines the shell used by the
 .Ic :terminal
 command.
-.It Ev NVIM_TUI_ENABLE_CURSOR_SHAPE
-If defined, change the cursor shape to a vertical bar while in insert mode.
-Requires that the host terminal supports the DECSCUSR CSI escape sequence.
-Has no effect in GUIs.
-.Pp
-Depending on the terminal emulator, using this option with
-.Nm
-under
-.Xr tmux 1
-might require adding the following to
-.Pa ~/.tmux.conf :
-.Bd -literal -offset indent
-set -ga terminal-overrides ',*:Ss=\eE[%p1%d q:Se=\eE[2 q'
-.Ed
-.Pp
-See
-.Ic terminal-overrides
-in the
-.Xr tmux 1
-manual page for more information.
 .El
 .Sh FILES
 .Bl -tag -width "~/.config/nvim/init.vim"

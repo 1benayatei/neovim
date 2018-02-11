@@ -1,22 +1,31 @@
 " Maintainer: Anmol Sethi <anmol@aubble.com>
 
-if &shell =~# 'fish$'
-  let s:man_cmd = 'man ^/dev/null'
-else
-  let s:man_cmd = 'man 2>/dev/null'
-endif
+let s:find_arg = '-w'
+let s:localfile_arg = v:true  " Always use -l if possible. #6683
+let s:section_arg = '-s'
 
-let s:man_find_arg = "-w"
-
-" TODO(nhooyr) Completion may work on SunOS; I'm not sure if `man -l` displays
-" the list of searched directories.
-try
-  if !has('win32') && $OSTYPE !~? 'cygwin\|linux' && system('uname -s') =~? 'SunOS' && system('uname -r') =~# '^5'
-    let s:man_find_arg = '-l'
+function! s:init_section_flag()
+  call system(['env', 'MANPAGER=cat', 'man', s:section_arg, '1', 'man'])
+  if v:shell_error
+    let s:section_arg = '-S'
   endif
-catch /E145:/
-  " Ignore the error in restricted mode
-endtry
+endfunction
+
+function! s:init() abort
+  call s:init_section_flag()
+  " TODO(nhooyr): Does `man -l` on SunOS list searched directories?
+  try
+    if !has('win32') && $OSTYPE !~? 'cygwin\|linux' && system('uname -s') =~? 'SunOS' && system('uname -r') =~# '^5'
+      let s:find_arg = '-l'
+    endif
+    " Check for -l support.
+    call s:get_page(s:get_path('', 'man')[0:-2])
+  catch /E145:/
+    " Ignore the error in restricted mode
+  catch /command error .*/
+    let s:localfile_arg = v:false
+  endtry
+endfunction
 
 function! man#open_page(count, count1, mods, ...) abort
   if a:0 > 2
@@ -49,44 +58,136 @@ function! man#open_page(count, count1, mods, ...) abort
     call s:error(v:exception)
     return
   endtry
+
   call s:push_tag()
   let bufname = 'man://'.name.(empty(sect)?'':'('.sect.')')
-  if a:mods !~# 'tab' && s:find_man()
-    noautocmd execute 'silent edit' bufname
-  else
-    noautocmd execute 'silent' a:mods 'split' bufname
-  endif
+
+  try
+    set eventignore+=BufReadCmd
+    if a:mods !~# 'tab' && s:find_man()
+      execute 'silent keepalt edit' fnameescape(bufname)
+    else
+      execute 'silent keepalt' a:mods 'split' fnameescape(bufname)
+    endif
+  finally
+    set eventignore-=BufReadCmd
+  endtry
+
+  try
+    let page = s:get_page(path)
+  catch
+    if a:mods =~# 'tab' || !s:find_man()
+      " a new window was opened
+      close
+    endif
+    call s:error(v:exception)
+    return
+  endtry
+
   let b:man_sect = sect
-  call s:read_page(path)
+  call s:put_page(page)
 endfunction
 
 function! man#read_page(ref) abort
   try
     let [sect, name] = man#extract_sect_and_name_ref(a:ref)
-    let [b:man_sect, name, path] = s:verify_exists(sect, name)
+    let [sect, name, path] = s:verify_exists(sect, name)
+    let page = s:get_page(path)
   catch
-    " call to s:error() is unnecessary
+    call s:error(v:exception)
     return
   endtry
-  call s:read_page(path)
+  let b:man_sect = sect
+  call s:put_page(page)
 endfunction
 
-function! s:read_page(path) abort
+" Handler for s:system() function.
+function! s:system_handler(jobid, data, event) dict abort
+  if a:event is# 'stdout' || a:event is# 'stderr'
+    let self[a:event] .= join(a:data, "\n")
+  else
+    let self.exit_code = a:data
+  endif
+endfunction
+
+" Run a system command and timeout after 30 seconds.
+function! s:system(cmd, ...) abort
+  let opts = {
+        \ 'stdout': '',
+        \ 'stderr': '',
+        \ 'exit_code': 0,
+        \ 'on_stdout': function('s:system_handler'),
+        \ 'on_stderr': function('s:system_handler'),
+        \ 'on_exit': function('s:system_handler'),
+        \ }
+  let jobid = jobstart(a:cmd, opts)
+
+  if jobid < 1
+    throw printf('command error %d: %s', jobid, join(a:cmd))
+  endif
+
+  let res = jobwait([jobid], 30000)
+  if res[0] == -1
+    try
+      call jobstop(jobid)
+      throw printf('command timed out: %s', join(a:cmd))
+    catch /^Vim(call):E900:/
+    endtry
+  elseif res[0] == -2
+    throw printf('command interrupted: %s', join(a:cmd))
+  endif
+  if opts.exit_code != 0
+    throw printf("command error (%d) %s: %s", jobid, join(a:cmd), substitute(opts.stderr, '\_s\+$', '', &gdefault ? '' : 'g'))
+  endif
+
+  return opts.stdout
+endfunction
+
+function! s:get_page(path) abort
+  " Respect $MANWIDTH or default to window width.
+  let manwidth = empty($MANWIDTH) ? winwidth(0) : $MANWIDTH
+  " Force MANPAGER=cat to ensure Vim is not recursively invoked (by man-db).
+  " http://comments.gmane.org/gmane.editors.vim.devel/29085
+  " Set MAN_KEEP_FORMATTING so Debian man doesn't discard backspaces.
+  let cmd = ['env', 'MANPAGER=cat', 'MANWIDTH='.manwidth, 'MAN_KEEP_FORMATTING=1', 'man']
+  return s:system(cmd + (s:localfile_arg ? ['-l', a:path] : [a:path]))
+endfunction
+
+function! s:put_page(page) abort
   setlocal modifiable
   setlocal noreadonly
   silent keepjumps %delete _
-  " Force MANPAGER=cat to ensure Vim is not recursively invoked (by man-db).
-  " http://comments.gmane.org/gmane.editors.vim.devel/29085
-  " Respect $MANWIDTH, or default to window width.
-  let cmd  = 'env MANPAGER=cat'.(empty($MANWIDTH) ? ' MANWIDTH='.winwidth(0) : '')
-  let cmd .= ' '.s:man_cmd.' '.shellescape(a:path)
-  silent put =system(cmd)
-  " remove all the backspaced text
-  execute 'silent keeppatterns keepjumps %substitute,.\b,,e'.(&gdefault?'':'g')
+  silent put =a:page
   while getline(1) =~# '^\s*$'
     silent keepjumps 1delete _
   endwhile
+  lua require("man").highlight_man_page()
   setlocal filetype=man
+endfunction
+
+function! man#show_toc() abort
+  let bufname = bufname('%')
+  let info = getloclist(0, {'winid': 1})
+  if !empty(info) && getwinvar(info.winid, 'qf_toc') ==# bufname
+    lopen
+    return
+  endif
+
+  let toc = []
+  let lnum = 2
+  let last_line = line('$') - 1
+  while lnum && lnum < last_line
+    let text = getline(lnum)
+    if text =~# '^\%( \{3\}\)\=\S.*$'
+      call add(toc, {'bufnr': bufnr('%'), 'lnum': lnum, 'text': text})
+    endif
+    let lnum = nextnonblank(lnum + 1)
+  endwhile
+
+  call setloclist(0, toc, ' ')
+  call setloclist(0, [], 'a', {'title': 'Man TOC'})
+  lopen
+  let w:qf_toc = bufname
 endfunction
 
 " attempt to extract the name and sect out of 'name(sect)'
@@ -112,28 +213,26 @@ endfunction
 
 function! s:get_path(sect, name) abort
   if empty(a:sect)
-    let path = system(s:man_cmd.' '.s:man_find_arg.' '.shellescape(a:name))
-    if path !~# '^\/'
-      throw 'no manual entry for '.a:name
-    endif
-    return path
+    return s:system(['man', s:find_arg, a:name])
   endif
   " '-s' flag handles:
   "   - tokens like 'printf(echo)'
   "   - sections starting with '-'
   "   - 3pcap section (found on macOS)
   "   - commas between sections (for section priority)
-  return system(s:man_cmd.' '.s:man_find_arg.' -s '.shellescape(a:sect).' '.shellescape(a:name))
+  return s:system(['man', s:find_arg, s:section_arg, a:sect, a:name])
 endfunction
 
 function! s:verify_exists(sect, name) abort
-  let path = s:get_path(a:sect, a:name)
-  if path !~# '^\/'
-    let path = s:get_path(get(b:, 'man_default_sects', ''), a:name)
-    if path !~# '^\/'
+  try
+    let path = s:get_path(a:sect, a:name)
+  catch /^command error (/
+    try
+      let path = s:get_path(get(b:, 'man_default_sects', ''), a:name)
+    catch /^command error (/
       let path = s:get_path('', a:name)
-    endif
-  endif
+    endtry
+  endtry
   " We need to extract the section from the path because sometimes
   " the actual section of the manpage is more specific than the section
   " we provided to `man`. Try ':Man 3 App::CLI'.
@@ -157,7 +256,7 @@ endfunction
 function! man#pop_tag() abort
   if !empty(s:tag_stack)
     let tag = remove(s:tag_stack, -1)
-    silent execute tag['buf'].'buffer'
+    execute 'silent' tag['buf'].'buffer'
     call cursor(tag['lnum'], tag['col'])
   endif
 endfunction
@@ -197,11 +296,15 @@ function! s:error(msg) abort
   echohl None
 endfunction
 
-let s:mandirs = join(split(system(s:man_cmd.' '.s:man_find_arg), ':\|\n'), ',')
-
 " see man#extract_sect_and_name_ref on why tolower(sect)
 function! man#complete(arg_lead, cmd_line, cursor_pos) abort
   let args = split(a:cmd_line)
+  let cmd_offset = index(args, 'Man')
+  if cmd_offset > 0
+    " Prune all arguments up to :Man itself. Otherwise modifier commands like
+    " :tab, :vertical, etc. would lead to a wrong length.
+    let args = args[cmd_offset:]
+  endif
   let l = len(args)
   if l > 3
     return
@@ -215,6 +318,7 @@ function! man#complete(arg_lead, cmd_line, cursor_pos) abort
     let tmp = split(a:arg_lead, '(')
     let name = tmp[0]
     let sect = tolower(get(tmp, 1, ''))
+    return s:complete(sect, '', name)
   elseif args[1] !~# '^[^()]\+$'
     " cursor (|) is at ':Man 3() |' or ':Man (3|' or ':Man 3() pri|'
     " or ':Man 3() pri |'
@@ -242,20 +346,51 @@ function! man#complete(arg_lead, cmd_line, cursor_pos) abort
     let name = a:arg_lead
     let sect = tolower(args[1])
   endif
-  " We remove duplicates incase the same manpage in different languages was found.
-  return uniq(sort(map(globpath(s:mandirs,'man?/'.name.'*.'.sect.'*', 0, 1), 's:format_candidate(v:val, sect)'), 'i'))
+  return s:complete(sect, sect, name)
 endfunction
 
-function! s:format_candidate(path, sect) abort
+function! s:complete(sect, psect, name) abort
+  try
+    let mandirs = join(split(s:system(['man', s:find_arg]), ':\|\n'), ',')
+  catch
+    call s:error(v:exception)
+    return
+  endtry
+  let pages = globpath(mandirs,'man?/'.a:name.'*.'.a:sect.'*', 0, 1)
+  " We remove duplicates in case the same manpage in different languages was found.
+  return uniq(sort(map(pages, 's:format_candidate(v:val, a:psect)'), 'i'))
+endfunction
+
+function! s:format_candidate(path, psect) abort
   if a:path =~# '\.\%(pdf\|in\)$' " invalid extensions
     return
   endif
   let [sect, name] = s:extract_sect_and_name_path(a:path)
-  if sect ==# a:sect
+  if sect ==# a:psect
     return name
-  elseif sect =~# a:sect.'.\+$'
+  elseif sect =~# a:psect.'.\+$'
     " We include the section if the user provided section is a prefix
     " of the actual section.
     return name.'('.sect.')'
   endif
 endfunction
+
+function! man#init_pager() abort
+  if getline(1) =~# '^\s*$'
+    silent keepjumps 1delete _
+  else
+    keepjumps 1
+  endif
+  lua require("man").highlight_man_page()
+  " This is not perfect. See `man glDrawArraysInstanced`. Since the title is
+  " all caps it is impossible to tell what the original capitilization was.
+  let ref = substitute(matchstr(getline(1), '^[^)]\+)'), ' ', '_', 'g')
+  try
+    let b:man_sect = man#extract_sect_and_name_ref(ref)[0]
+  catch
+    let b:man_sect = ''
+  endtry
+  execute 'silent file man://'.fnameescape(ref)
+endfunction
+
+call s:init()

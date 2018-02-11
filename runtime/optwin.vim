@@ -1,7 +1,7 @@
 " These commands create the option window.
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2016 Mar 19
+" Last Change:	2017 Oct 19
 
 " If there already is an option window, jump to that one.
 if bufwinnr("option-window") > 0
@@ -506,6 +506,14 @@ if has("cursorbind")
   call append("$", "\t(local to window)")
   call <SID>BinOptionL("crb")
 endif
+if has("terminal")
+  call append("$", "termsize\tsize of a terminal window")
+  call append("$", "\t(local to window)")
+  call <SID>OptionL("tms")
+  call append("$", "termkey\tkey that precedes Vim commands in a terminal window")
+  call append("$", "\t(local to window)")
+  call <SID>OptionL("tk")
+endif
 
 
 call <SID>Header("multiple tab pages")
@@ -524,8 +532,6 @@ endif
 
 
 call <SID>Header("terminal")
-call append("$", "esckeys\trecognize keys that start with <Esc> in Insert mode")
-call <SID>BinOptionG("ek", &ek)
 call append("$", "scrolljump\tminimal number of lines to scroll at a time")
 call append("$", " \tset sj=" . &sj)
 if has("gui") || has("msdos") || has("win32")
@@ -591,8 +597,6 @@ if has("gui")
       call append("$", "toolbariconsize\tsize of toolbar icons")
       call <SID>OptionG("tbis", &tbis)
     endif
-    call append("$", "guiheadroom\troom (in pixels) left above/below the window")
-    call append("$", " \tset ghr=" . &ghr)
   endif
   if has("browse")
     call append("$", "browsedir\t\"last\", \"buffer\" or \"current\": which directory used for the file browser")
@@ -710,6 +714,10 @@ call <SID>Header("editing text")
 call append("$", "undolevels\tmaximum number of changes that can be undone")
 call append("$", "\t(global or local to buffer)")
 call append("$", " \tset ul=" . &ul)
+call append("$", "undofile\tautomatically save and restore undo history")
+call <SID>BinOptionG("udf", &udf)
+call append("$", "undodir\tlist of directories for undo files")
+call <SID>OptionG("udir", &udir)
 call append("$", "undoreload\tmaximum number lines to save for undo on a buffer reload")
 call append("$", " \tset ur=" . &ur)
 call append("$", "modified\tchanges have been made and not written to a file")
@@ -1032,10 +1040,6 @@ if has("vertsplit")
   call append("$", "cmdwinheight\theight of the command-line window")
   call <SID>OptionG("cwh", &cwh)
 endif
-call append("$", "undofile\tautomatically save and restore undo history")
-call <SID>BinOptionG("udf", &udf)
-call append("$", "undodir\tlist of directories for undo files")
-call <SID>OptionG("udir", &udir)
 
 
 call <SID>Header("executing external commands")
@@ -1083,6 +1087,9 @@ if has("quickfix")
   call <SID>OptionG("gp", &gp)
   call append("$", "grepformat\tlist of formats for output of 'grepprg'")
   call <SID>OptionG("gfm", &gfm)
+  call append("$", "makeencoding\tencoding of the \":make\" and \":grep\" output")
+  call append("$", "\t(global or local to buffer)")
+  call <SID>OptionG("menc", &menc)
 endif
 
 
@@ -1150,8 +1157,8 @@ endif
 if has("langmap")
   call append("$", "langmap\tlist of characters that are translated in Normal mode")
   call <SID>OptionG("lmap", &lmap)
-  call append("$", "langnoremap\tdon't apply 'langmap' to mapped characters")
-  call <SID>BinOptionG("lnr", &lnr)
+  call append("$", "langremap\tapply 'langmap' to mapped characters")
+  call <SID>BinOptionG("lrm", &lrm)
 endif
 if has("xim")
   call append("$", "imdisable\twhen set never use IM; overrules following IM options")
@@ -1250,6 +1257,9 @@ call append("$", "\t(local to buffer)")
 call <SID>BinOptionL("bl")
 call append("$", "debug\tset to \"msg\" to see all error messages")
 call append("$", " \tset debug=" . &debug)
+call append("$", "signcolumn\twhether to show the signcolumn")
+call append("$", "\t(local to window)")
+call <SID>OptionL("scl")
 
 set cpo&vim
 
@@ -1272,6 +1282,12 @@ if has("syntax")
     hi link optwinName Identifier
     hi link optwinComment Comment
   endif
+endif
+if exists("&mzschemedll")
+  call append("$", "mzschemedll\tname of the Tcl dynamic library")
+  call <SID>OptionG("mzschemedll", &mzschemedll)
+  call append("$", "mzschemegcdll\tname of the Tcl GC dynamic library")
+  call <SID>OptionG("mzschemegcdll", &mzschemegcdll)
 endif
 
 " Install autocommands to enable mappings in option-window

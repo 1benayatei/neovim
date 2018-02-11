@@ -1,6 +1,11 @@
-/*
- * ex_eval.c: functions for Ex command line for the +eval feature.
- */
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
+// TODO(ZyX-I): move to eval/executor
+
+/// @file ex_eval.c
+///
+/// Functions for Ex command line for the +eval feature.
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -12,14 +17,13 @@
 #include "nvim/ex_eval.h"
 #include "nvim/charset.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
 #include "nvim/ex_cmds2.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/message.h"
 #include "nvim/memory.h"
 #include "nvim/regexp.h"
 #include "nvim/strings.h"
-
-
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ex_eval.c.generated.h"
@@ -57,12 +61,14 @@
  * is an error exception.)  -  The macros can be defined as expressions checking
  * for a variable that is allowed to be changed during execution of a script.
  */
-/* Values used for the Vim release. */
-# define THROW_ON_ERROR         TRUE
-# define THROW_ON_ERROR_TRUE
-# define THROW_ON_INTERRUPT     TRUE
-# define THROW_ON_INTERRUPT_TRUE
 
+// Values used for the Vim release.
+#define THROW_ON_ERROR true
+#define THROW_ON_ERROR_TRUE
+#define THROW_ON_INTERRUPT true
+#define THROW_ON_INTERRUPT_TRUE
+
+#define discard_pending_return(p) tv_free((typval_T *)(p))
 
 /*
  * When several errors appear in a row, setting "force_abort" is delayed until
@@ -368,10 +374,9 @@ int do_intthrow(struct condstack *cstack)
   return TRUE;
 }
 
-/*
- * Get an exception message that is to be stored in current_exception->value.
- */
-char_u *get_exception_string(void *value, int type, char_u *cmdname, int *should_free)
+// Get an exception message that is to be stored in current_exception->value.
+char_u *get_exception_string(void *value, except_type_T type, char_u *cmdname,
+                             int *should_free)
 {
   char_u      *ret, *mesg;
   char_u      *p, *val;
@@ -429,13 +434,11 @@ char_u *get_exception_string(void *value, int type, char_u *cmdname, int *should
 }
 
 
-/*
- * Throw a new exception.  Return FAIL when out of memory or it was tried to
- * throw an illegal user exception.  "value" is the exception string for a
- * user or interrupt exception, or points to a message list in case of an
- * error exception.
- */
-static int throw_exception(void *value, int type, char_u *cmdname)
+// Throw a new exception.  Return FAIL when out of memory or it was tried to
+// throw an illegal user exception.  "value" is the exception string for a
+// user or interrupt exception, or points to a message list in case of an
+// error exception.
+static int throw_exception(void *value, except_type_T type, char_u *cmdname)
 {
   except_T    *excp;
   int should_free;
@@ -482,7 +485,7 @@ static int throw_exception(void *value, int type, char_u *cmdname)
       msg_scroll = TRUE;            /* always scroll up, don't overwrite */
 
     smsg(_("Exception thrown: %s"), excp->value);
-    msg_puts((char_u *)"\n");       /* don't overwrite this either */
+    msg_puts("\n");  // don't overwrite this either
 
     if (debug_break_level > 0 || *p_vfile == NUL)
       cmdline_row = msg_row;
@@ -514,7 +517,7 @@ static void discard_exception(except_T *excp, int was_finished)
   char_u              *saved_IObuff;
 
   if (excp == NULL) {
-    EMSG(_(e_internal));
+    internal_error("discard_exception()");
     return;
   }
 
@@ -532,15 +535,17 @@ static void discard_exception(except_T *excp, int was_finished)
     smsg(was_finished ? _("Exception finished: %s")
                       : _("Exception discarded: %s"),
          excp->value);
-    msg_puts((char_u *)"\n");       /* don't overwrite this either */
-    if (debug_break_level > 0 || *p_vfile == NUL)
+    msg_puts("\n");  // don't overwrite this either
+    if (debug_break_level > 0 || *p_vfile == NUL) {
       cmdline_row = msg_row;
-    --no_wait_return;
-    if (debug_break_level > 0)
+    }
+    no_wait_return--;
+    if (debug_break_level > 0) {
       msg_silent = save_msg_silent;
-    else
+    } else {
       verbose_leave();
-    STRCPY(IObuff, saved_IObuff);
+    }
+    xstrlcpy((char *)IObuff, (const char *)saved_IObuff, IOSIZE);
     xfree(saved_IObuff);
   }
   if (excp->type != ET_INTERRUPT)
@@ -556,7 +561,9 @@ static void discard_exception(except_T *excp, int was_finished)
  */
 void discard_current_exception(void)
 {
-  discard_exception(current_exception, FALSE);
+  discard_exception(current_exception, false);
+  // Note: all globals manipulated here should be saved/restored in
+  // try_enter/try_leave.
   current_exception = NULL;
   did_throw = FALSE;
   need_rethrow = FALSE;
@@ -595,7 +602,7 @@ static void catch_exception(except_T *excp)
       msg_scroll = TRUE;            /* always scroll up, don't overwrite */
 
     smsg(_("Exception caught: %s"), excp->value);
-    msg_puts((char_u *)"\n");       /* don't overwrite this either */
+    msg_puts("\n");  // don't overwrite this either
 
     if (debug_break_level > 0 || *p_vfile == NUL)
       cmdline_row = msg_row;
@@ -612,8 +619,9 @@ static void catch_exception(except_T *excp)
  */
 static void finish_exception(except_T *excp)
 {
-  if (excp != caught_stack)
-    EMSG(_(e_internal));
+  if (excp != caught_stack) {
+    internal_error("finish_exception()");
+  }
   caught_stack = caught_stack->caught;
   if (caught_stack != NULL) {
     set_vim_var_string(VV_EXCEPTION, (char *) caught_stack->value, -1);
@@ -714,7 +722,7 @@ static void report_pending(int action, int pending, void *value)
   ++no_wait_return;
   msg_scroll = TRUE;            /* always scroll up, don't overwrite */
   smsg(mesg, s);
-  msg_puts((char_u *)"\n");     /* don't overwrite this either */
+  msg_puts("\n");  // don't overwrite this either
   cmdline_row = msg_row;
   --no_wait_return;
   if (debug_break_level > 0)
@@ -777,7 +785,6 @@ void report_discard_pending(int pending, void *value)
  */
 void ex_if(exarg_T *eap)
 {
-  int error;
   int skip;
   int result;
   struct condstack    *cstack = eap->cstack;
@@ -798,6 +805,7 @@ void ex_if(exarg_T *eap)
                                                                       1] &
                                                      CSF_ACTIVE));
 
+    bool error;
     result = eval_to_bool(eap->arg, &error, &eap->nextcmd, skip);
 
     if (!skip && !error) {
@@ -842,7 +850,6 @@ void ex_endif(exarg_T *eap)
  */
 void ex_else(exarg_T *eap)
 {
-  int error;
   int skip;
   int result;
   struct condstack    *cstack = eap->cstack;
@@ -899,6 +906,7 @@ void ex_else(exarg_T *eap)
   }
 
   if (eap->cmdidx == CMD_elseif) {
+    bool error;
     result = eval_to_bool(eap->arg, &error, &eap->nextcmd, skip);
     /* When throwing error exceptions, we want to throw always the first
      * of several errors in a row.  This is what actually happens when
@@ -923,7 +931,7 @@ void ex_else(exarg_T *eap)
  */
 void ex_while(exarg_T *eap)
 {
-  int error;
+  bool error;
   int skip;
   int result;
   struct condstack    *cstack = eap->cstack;
@@ -1145,23 +1153,25 @@ void ex_endwhile(exarg_T *eap)
  */
 void ex_throw(exarg_T *eap)
 {
-  char_u      *arg = eap->arg;
-  char_u      *value;
+  const char *arg = (const char *)eap->arg;
+  char *value;
 
-  if (*arg != NUL && *arg != '|' && *arg != '\n')
-    value = eval_to_string_skip(arg, &eap->nextcmd, eap->skip);
-  else {
+  if (*arg != NUL && *arg != '|' && *arg != '\n') {
+    value = eval_to_string_skip(arg, (const char **)&eap->nextcmd,
+                                (bool)eap->skip);
+  } else {
     EMSG(_(e_argreq));
     value = NULL;
   }
 
-  /* On error or when an exception is thrown during argument evaluation, do
-   * not throw. */
+  // On error or when an exception is thrown during argument evaluation, do
+  // not throw.
   if (!eap->skip && value != NULL) {
-    if (throw_exception(value, ET_USER, NULL) == FAIL)
+    if (throw_exception((char_u *)value, ET_USER, NULL) == FAIL) {
       xfree(value);
-    else
+    } else {
       do_throw(eap->cstack);
+    }
   }
 }
 
@@ -1413,8 +1423,9 @@ void ex_catch(exarg_T *eap)
        * ":endtry" or when the catch clause is left by a ":continue",
        * ":break", ":return", ":finish", error, interrupt, or another
        * exception. */
-      if (cstack->cs_exception[cstack->cs_idx] != current_exception)
-        EMSG(_(e_internal));
+      if (cstack->cs_exception[cstack->cs_idx] != current_exception) {
+        internal_error("ex_catch()");
+      }
     } else {
       /*
        * If there is a preceding catch clause and it caught the exception,
@@ -1538,7 +1549,7 @@ void ex_finally(exarg_T *eap)
          * exception will be discarded. */
         if (did_throw && cstack->cs_exception[cstack->cs_idx]
             != current_exception)
-          EMSG(_(e_internal));
+          internal_error("ex_finally()");
       }
 
       /*

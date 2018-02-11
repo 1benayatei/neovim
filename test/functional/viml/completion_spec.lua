@@ -2,9 +2,8 @@ local helpers = require('test.functional.helpers')(after_each)
 local Screen = require('test.functional.ui.screen')
 local clear, feed = helpers.clear, helpers.feed
 local eval, eq, neq = helpers.eval, helpers.eq, helpers.neq
-local execute, source, expect = helpers.execute, helpers.source, helpers.expect
-
-if helpers.pending_win32(pending) then return end
+local feed_command, source, expect = helpers.feed_command, helpers.source, helpers.expect
+local meths = helpers.meths
 
 describe('completion', function()
   local screen
@@ -66,25 +65,25 @@ describe('completion', function()
     it('is readonly', function()
       screen:try_resize(80, 8)
       feed('ifoo<ESC>o<C-x><C-n><ESC>')
-      execute('let v:completed_item.word = "bar"')
+      feed_command('let v:completed_item.word = "bar"')
       neq(nil, string.find(eval('v:errmsg'), '^E46: '))
-      execute('let v:errmsg = ""')
+      feed_command('let v:errmsg = ""')
 
-      execute('let v:completed_item.abbr = "bar"')
+      feed_command('let v:completed_item.abbr = "bar"')
       neq(nil, string.find(eval('v:errmsg'), '^E46: '))
-      execute('let v:errmsg = ""')
+      feed_command('let v:errmsg = ""')
 
-      execute('let v:completed_item.menu = "bar"')
+      feed_command('let v:completed_item.menu = "bar"')
       neq(nil, string.find(eval('v:errmsg'), '^E46: '))
-      execute('let v:errmsg = ""')
+      feed_command('let v:errmsg = ""')
 
-      execute('let v:completed_item.info = "bar"')
+      feed_command('let v:completed_item.info = "bar"')
       neq(nil, string.find(eval('v:errmsg'), '^E46: '))
-      execute('let v:errmsg = ""')
+      feed_command('let v:errmsg = ""')
 
-      execute('let v:completed_item.kind = "bar"')
+      feed_command('let v:completed_item.kind = "bar"')
       neq(nil, string.find(eval('v:errmsg'), '^E46: '))
-      execute('let v:errmsg = ""')
+      feed_command('let v:errmsg = ""')
     end)
     it('returns expected dict in omni completion', function()
       source([[
@@ -124,7 +123,7 @@ describe('completion', function()
     end)
 
     it('inserts the first candidate if default', function()
-      execute('set completeopt+=menuone')
+      feed_command('set completeopt+=menuone')
       feed('ifoo<ESC>o')
       screen:expect([[
         foo                                                         |
@@ -175,7 +174,7 @@ describe('completion', function()
       eq('foo', eval('getline(3)'))
     end)
     it('selects the first candidate if noinsert', function()
-      execute('set completeopt+=menuone,noinsert')
+      feed_command('set completeopt+=menuone,noinsert')
       feed('ifoo<ESC>o<C-x><C-n>')
       screen:expect([[
         foo                                                         |
@@ -215,7 +214,7 @@ describe('completion', function()
       eq('foo', eval('getline(3)'))
     end)
     it('does not insert the first candidate if noselect', function()
-      execute('set completeopt+=menuone,noselect')
+      feed_command('set completeopt+=menuone,noselect')
       feed('ifoo<ESC>o<C-x><C-n>')
       screen:expect([[
         foo                                                         |
@@ -255,7 +254,7 @@ describe('completion', function()
       eq('bar', eval('getline(3)'))
     end)
     it('does not select/insert the first candidate if noselect and noinsert', function()
-      execute('set completeopt+=menuone,noselect,noinsert')
+      feed_command('set completeopt+=menuone,noselect,noinsert')
       feed('ifoo<ESC>o<C-x><C-n>')
       screen:expect([[
         foo                                                         |
@@ -304,17 +303,73 @@ describe('completion', function()
       eq('', eval('getline(3)'))
     end)
     it('does not change modified state if noinsert', function()
-      execute('set completeopt+=menuone,noinsert')
-      execute('setlocal nomodified')
+      feed_command('set completeopt+=menuone,noinsert')
+      feed_command('setlocal nomodified')
       feed('i<C-r>=TestComplete()<CR><ESC>')
       eq(0, eval('&l:modified'))
     end)
     it('does not change modified state if noselect', function()
-      execute('set completeopt+=menuone,noselect')
-      execute('setlocal nomodified')
+      feed_command('set completeopt+=menuone,noselect')
+      feed_command('setlocal nomodified')
       feed('i<C-r>=TestComplete()<CR><ESC>')
       eq(0, eval('&l:modified'))
     end)
+  end)
+
+  describe('completeopt+=noinsert does not add blank undo items', function()
+    before_each(function()
+      source([[
+      function! TestComplete() abort
+        call complete(1, ['foo', 'bar'])
+        return ''
+      endfunction
+      ]])
+      feed_command('set completeopt+=noselect,noinsert')
+      feed_command('inoremap <right> <c-r>=TestComplete()<cr>')
+    end)
+
+    local tests = {
+      ['<up>, <down>, <cr>'] = {'<down><cr>', '<up><cr>'},
+      ['<c-n>, <c-p>, <c-y>'] = {'<c-n><c-y>', '<c-p><c-y>'},
+    }
+
+    for name, seq in pairs(tests) do
+      it('using ' .. name, function()
+        feed('iaaa<esc>')
+        feed('A<right>' .. seq[1] .. '<esc>')
+        feed('A<right><esc>A<right><esc>')
+        feed('A<cr>bbb<esc>')
+        feed('A<right>' .. seq[2] .. '<esc>')
+        feed('A<right><esc>A<right><esc>')
+        feed('A<cr>ccc<esc>')
+        feed('A<right>' .. seq[1] .. '<esc>')
+        feed('A<right><esc>A<right><esc>')
+
+        local expected = {
+          {'foo', 'bar', 'foo'},
+          {'foo', 'bar', 'ccc'},
+          {'foo', 'bar'},
+          {'foo', 'bbb'},
+          {'foo'},
+          {'aaa'},
+          {''},
+        }
+
+        for i = 1, #expected do
+          if i > 1 then
+            feed('u')
+          end
+          eq(expected[i], eval('getline(1, "$")'))
+        end
+
+        for i = #expected, 1, -1 do
+          if i < #expected then
+            feed('<c-r>')
+          end
+          eq(expected[i], eval('getline(1, "$")'))
+        end
+      end)
+    end
   end)
 
   describe("refresh:always", function()
@@ -470,7 +525,7 @@ describe('completion', function()
                                                                     |
       ]])
       expect([[
-        
+
         June
         June]])
     end)
@@ -484,7 +539,7 @@ describe('completion', function()
         return ''
       endfunction
       ]])
-      execute("set completeopt=menuone,noselect")
+      feed_command("set completeopt=menuone,noselect")
     end)
 
     it("works", function()
@@ -650,7 +705,7 @@ describe('completion', function()
 
 
   it('disables folding during completion', function ()
-    execute("set foldmethod=indent")
+    feed_command("set foldmethod=indent")
     feed('i<Tab>foo<CR><Tab>bar<Esc>gg')
     screen:expect([[
               ^foo                                                 |
@@ -677,7 +732,7 @@ describe('completion', function()
   end)
 
   it('popupmenu is not interrupted by events', function ()
-    execute("set complete=.")
+    feed_command("set complete=.")
 
     feed('ifoobar fooegg<cr>f<c-p>')
     screen:expect([[
@@ -717,7 +772,7 @@ describe('completion', function()
       {3:-- Keyword completion (^N^P) }{4:match 2 of 2}                   |
     ]])
   end)
-  
+
   describe('from the commandline window', function()
 
     it('is cleared after CTRL-C', function ()
@@ -758,15 +813,66 @@ describe('completion', function()
     end)
   end)
 
+  describe('with numeric items', function()
+    before_each(function()
+      source([[
+        function! TestComplete() abort
+          call complete(1, g:_complist)
+          return ''
+        endfunction
+      ]])
+      meths.set_option('completeopt', 'menuone,noselect')
+      meths.set_var('_complist', {{
+        word=0,
+        abbr=1,
+        menu=2,
+        kind=3,
+        info=4,
+        icase=5,
+        dup=6,
+        empty=7,
+      }})
+    end)
+
+    it('shows correct variant as word', function()
+      feed('i<C-r>=TestComplete()<CR>')
+      screen:expect([[
+        ^                                                            |
+        {1:1 3 2          }{0:                                             }|
+        {0:~                                                           }|
+        {0:~                                                           }|
+        {0:~                                                           }|
+        {0:~                                                           }|
+        {0:~                                                           }|
+        {3:-- INSERT --}                                                |
+      ]])
+    end)
+  end)
+
+  it("'ignorecase' 'infercase' CTRL-X CTRL-N #6451", function()
+    feed_command('set ignorecase infercase')
+    feed_command('edit BACKERS.md')
+    feed('oX<C-X><C-N>')
+    screen:expect([[
+      # Bountysource Backers                                      |
+      Xnull^                                                       |
+      {2:Xnull          }{6: }                                            |
+      {1:Xoxomoon       }{6: }ryone who backed our [Bountysource fundraise|
+      {1:Xu             }{6: }ountysource.com/teams/neovim/fundraiser)!   |
+      {1:Xpayn          }{2: }                                            |
+      {1:Xinity         }{2: }d URL in BACKERS.md.                        |
+      {3:-- Keyword Local completion (^N^P) }{4:match 1 of 7}             |
+    ]])
+  end)
 end)
 
-describe('External completion popupmenu', function()
+describe('ui/ext_popupmenu', function()
   local screen
   local items, selected, anchor
   before_each(function()
     clear()
     screen = Screen.new(60, 8)
-    screen:attach({rgb=true, popupmenu_external=true})
+    screen:attach({rgb=true, ext_popupmenu=true})
     screen:set_default_attr_ids({
       [1] = {bold=true, foreground=Screen.colors.Blue},
       [2] = {bold = true},
@@ -806,7 +912,7 @@ describe('External completion popupmenu', function()
       {1:~                                                           }|
       {1:~                                                           }|
       {2:-- INSERT --}                                                |
-    ]], nil, nil, function() 
+    ]], nil, nil, function()
       eq(expected, items)
       eq(0, selected)
       eq({1,0}, anchor)
@@ -822,7 +928,7 @@ describe('External completion popupmenu', function()
       {1:~                                                           }|
       {1:~                                                           }|
       {2:-- INSERT --}                                                |
-    ]], nil, nil, function() 
+    ]], nil, nil, function()
       eq(expected, items)
       eq(-1, selected)
       eq({1,0}, anchor)

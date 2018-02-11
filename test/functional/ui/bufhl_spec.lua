@@ -1,17 +1,16 @@
 local helpers = require('test.functional.helpers')(after_each)
 local Screen = require('test.functional.ui.screen')
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local execute, request, neq = helpers.execute, helpers.request, helpers.neq
 
-if helpers.pending_win32(pending) then return end
+local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
+local command, neq = helpers.command, helpers.neq
+local curbufmeths = helpers.curbufmeths
 
 describe('Buffer highlighting', function()
   local screen
-  local curbuf
 
   before_each(function()
     clear()
-    execute("syntax on")
+    command('syntax on')
     screen = Screen.new(40, 8)
     screen:attach()
     screen:set_default_attr_ids({
@@ -23,23 +22,17 @@ describe('Buffer highlighting', function()
       [6] = {foreground = Screen.colors.DarkCyan}, -- Identifier
       [7] = {bold = true},
       [8] = {underline = true, bold = true, foreground = Screen.colors.SlateBlue},
-      [9] = {foreground = Screen.colors.SlateBlue, underline = true}
+      [9] = {foreground = Screen.colors.SlateBlue, underline = true},
+      [10] = {foreground = Screen.colors.Red}
     })
-    curbuf = request('nvim_get_current_buf')
   end)
 
   after_each(function()
     screen:detach()
   end)
 
-  local function add_hl(...)
-    return request('nvim_buf_add_highlight', curbuf, ...)
-  end
-
-  local function clear_hl(...)
-    return request('nvim_buf_clear_highlight', curbuf, ...)
-  end
-
+  local add_hl = curbufmeths.add_highlight
+  local clear_hl = curbufmeths.clear_highlight
 
   it('works', function()
     insert([[
@@ -106,7 +99,7 @@ describe('Buffer highlighting', function()
         combining highlights
         from different sources]])
 
-      execute("hi ImportantWord gui=bold cterm=bold")
+      command("hi ImportantWord gui=bold cterm=bold")
       id1 = add_hl(0, "ImportantWord", 0, 2, 8)
       add_hl(id1, "ImportantWord", 1, 12, -1)
       add_hl(id1, "ImportantWord", 2, 0, 9)
@@ -131,7 +124,7 @@ describe('Buffer highlighting', function()
         {1:~                                       }|
         {1:~                                       }|
         {1:~                                       }|
-        :hi ImportantWord gui=bold cterm=bold   |
+                                                |
       ]])
     end)
 
@@ -145,7 +138,7 @@ describe('Buffer highlighting', function()
         {1:~                                       }|
         {1:~                                       }|
         {1:~                                       }|
-        :hi ImportantWord gui=bold cterm=bold   |
+                                                |
       ]])
     end)
 
@@ -159,7 +152,7 @@ describe('Buffer highlighting', function()
         {1:~                                       }|
         {1:~                                       }|
         {1:~                                       }|
-        :hi ImportantWord gui=bold cterm=bold   |
+                                                |
       ]])
     end)
 
@@ -175,7 +168,7 @@ describe('Buffer highlighting', function()
         {1:~                                       }|
         {1:~                                       }|
         {1:~                                       }|
-        :hi ImportantWord gui=bold cterm=bold   |
+                                                |
       ]])
     end)
 
@@ -192,7 +185,7 @@ describe('Buffer highlighting', function()
                                                 |
       ]])
 
-      execute(':3move 4')
+      command(':3move 4')
       screen:expect([[
         a {5:longer} example                        |
                                                 |
@@ -201,7 +194,7 @@ describe('Buffer highlighting', function()
         {1:~                                       }|
         {1:~                                       }|
         {1:~                                       }|
-        ::3move 4                               |
+                                                |
       ]])
     end)
   end)
@@ -245,6 +238,34 @@ describe('Buffer highlighting', function()
 
     screen:expect([[
       Ta {6:båten} över {2:sjön}^!                     |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+                                              |
+    ]])
+  end)
+
+  it('works with new syntax groups', function()
+    insert([[
+      fancy code in a new fancy language]])
+    add_hl(-1, "FancyLangItem", 0, 0, 5)
+    screen:expect([[
+      fancy code in a new fancy languag^e      |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+                                              |
+    ]])
+
+    command('hi FancyLangItem guifg=red')
+    screen:expect([[
+      {10:fancy} code in a new fancy languag^e      |
       {1:~                                       }|
       {1:~                                       }|
       {1:~                                       }|

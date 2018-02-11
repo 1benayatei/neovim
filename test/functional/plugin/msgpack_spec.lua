@@ -8,7 +8,7 @@ local NIL = helpers.NIL
 local plugin_helpers = require('test.functional.plugin.helpers')
 local reset = plugin_helpers.reset
 
-describe('In autoload/msgpack.vim', function()
+describe('autoload/msgpack.vim', function()
   before_each(reset)
 
   local sp = function(typ, val)
@@ -652,6 +652,8 @@ describe('In autoload/msgpack.vim', function()
 
       eval_eq('integer', ('a'):byte(), '\'a\'')
       eval_eq('integer', 0xAB, '\'«\'')
+      eval_eq('integer', 0, '\'\\0\'')
+      eval_eq('integer', 10246567, '\'\\10246567\'')
     end)
 
     it('correctly loads constants', function()

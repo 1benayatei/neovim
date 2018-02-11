@@ -1,9 +1,9 @@
 local helpers = require('test.functional.helpers')(after_each)
 local Screen = require('test.functional.ui.screen')
 local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local execute = helpers.execute
-
-if helpers.pending_win32(pending) then return end
+local feed_command = helpers.feed_command
+local eq = helpers.eq
+local eval = helpers.eval
 
 describe('search highlighting', function()
   local screen
@@ -22,7 +22,7 @@ describe('search highlighting', function()
   end)
 
   it('is disabled by ":set nohlsearch"', function()
-    execute('set nohlsearch')
+    feed_command('set nohlsearch')
     insert("some text\nmore text")
     feed("gg/text<cr>")
     screen:expect([[
@@ -79,7 +79,7 @@ describe('search highlighting', function()
       /\<text\>                               |
     ]])
 
-    execute("nohlsearch")
+    feed_command("nohlsearch")
     screen:expect([[
         some text                             |
         more textstuff                        |
@@ -92,8 +92,8 @@ describe('search highlighting', function()
   end)
 
   it('works with incsearch', function()
-    execute('set hlsearch')
-    execute('set incsearch')
+    feed_command('set hlsearch')
+    feed_command('set incsearch')
     insert([[
       the first line
       in a little file
@@ -101,7 +101,30 @@ describe('search highlighting', function()
     feed("gg/li")
     screen:expect([[
         the first {3:li}ne                        |
-        in a little file                      |
+        in a {2:li}ttle file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      /li^                                     |
+    ]])
+
+    -- check that consecutive matches are caught by C-g/C-t
+    feed("<C-g>")
+    screen:expect([[
+        the first {2:li}ne                        |
+        in a {3:li}ttle file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      /li^                                     |
+    ]])
+
+    feed("<C-t>")
+    screen:expect([[
+        the first {3:li}ne                        |
+        in a {2:li}ttle file                      |
                                               |
       {1:~                                       }|
       {1:~                                       }|
@@ -134,7 +157,7 @@ describe('search highlighting', function()
     feed("/fir")
     screen:expect([[
         the {3:fir}st line                        |
-        in a {2:lit}tle file                      |
+        in a little file                      |
                                               |
       {1:~                                       }|
       {1:~                                       }|
@@ -146,18 +169,112 @@ describe('search highlighting', function()
     feed("<esc>/ttle")
     screen:expect([[
         the first line                        |
-        in a {2:li}{3:ttle} file                      |
+        in a li{3:ttle} file                      |
                                               |
       {1:~                                       }|
       {1:~                                       }|
       {1:~                                       }|
       /ttle^                                   |
     ]])
+
+    -- cancelling search resets to the old search term
+    feed('<esc>')
+    screen:expect([[
+        the first line                        |
+        in a {2:^lit}tle file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+                                              |
+    ]])
+    eq('lit', eval('@/'))
+
+    -- cancelling inc search restores the hl state
+    feed(':noh<cr>')
+    screen:expect([[
+        the first line                        |
+        in a ^little file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      :noh                                    |
+    ]])
+
+    feed('/first')
+    screen:expect([[
+        the {3:first} line                        |
+        in a little file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      /first^                                  |
+    ]])
+    feed('<esc>')
+    screen:expect([[
+        the first line                        |
+        in a ^little file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+                                              |
+    ]])
+
+    -- test that pressing C-g in an empty command line does not move the cursor
+    feed('/<C-g>')
+    screen:expect([[
+        the first line                        |
+        in a little file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      /^                                       |
+    ]])
+
+    -- same, for C-t
+    feed('<ESC>/<C-t>')
+    screen:expect([[
+        the first line                        |
+        in a little file                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      /^                                       |
+    ]])
+
+    -- 8.0.1304, test that C-g and C-t works with incsearch and empty pattern
+    feed('<esc>/fi<CR>')
+    feed('//')
+    screen:expect([[
+        the {3:fi}rst line                        |
+        in a little {2:fi}le                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      //^                                      |
+    ]])
+
+    feed('<C-g>')
+    screen:expect([[
+        the {2:fi}rst line                        |
+        in a little {3:fi}le                      |
+                                              |
+      {1:~                                       }|
+      {1:~                                       }|
+      {1:~                                       }|
+      //^                                      |
+    ]])
   end)
 
   it('works with incsearch and offset', function()
-    execute('set hlsearch')
-    execute('set incsearch')
+    feed_command('set hlsearch')
+    feed_command('set incsearch')
     insert([[
       not the match you're looking for
       the match is here]])
@@ -165,7 +282,7 @@ describe('search highlighting', function()
     feed("gg/mat/e")
     screen:expect([[
       not the {3:mat}ch you're looking for        |
-      the match is here                       |
+      the {2:mat}ch is here                       |
       {1:~                                       }|
       {1:~                                       }|
       {1:~                                       }|
@@ -176,7 +293,7 @@ describe('search highlighting', function()
     -- Search with count and /e offset fixed in Vim patch 7.4.532.
     feed("<esc>2/mat/e")
     screen:expect([[
-      not the match you're looking for        |
+      not the {2:mat}ch you're looking for        |
       the {3:mat}ch is here                       |
       {1:~                                       }|
       {1:~                                       }|
@@ -198,7 +315,7 @@ describe('search highlighting', function()
   end)
 
   it('works with multiline regexps', function()
-    execute('set hlsearch')
+    feed_command('set hlsearch')
     feed('4oa  repeated line<esc>')
     feed('/line\\na<cr>')
     screen:expect([[
@@ -234,19 +351,19 @@ describe('search highlighting', function()
         [6] = {italic = true, background = colors.Magenta},
         [7] = {bold = true, background = colors.Yellow},
     } )
-    execute('set hlsearch')
+    feed_command('set hlsearch')
     insert([[
       very special text
     ]])
-    execute("syntax on")
-    execute("highlight MyGroup guibg=Green gui=bold")
-    execute("highlight MyGroup2 guibg=Magenta gui=italic")
-    execute("call matchadd('MyGroup', 'special')")
-    execute("call matchadd('MyGroup2', 'text', 0)")
+    feed_command("syntax on")
+    feed_command("highlight MyGroup guibg=Green gui=bold")
+    feed_command("highlight MyGroup2 guibg=Magenta gui=italic")
+    feed_command("call matchadd('MyGroup', 'special')")
+    feed_command("call matchadd('MyGroup2', 'text', 0)")
 
     -- searchhl and matchadd matches are exclusive, only the higest priority
     -- is used (and matches with lower priorities are not combined)
-    execute("/ial te")
+    feed_command("/ial te")
     screen:expect([[
         very {5:spec^ial}{2: te}{6:xt}                     |
                                               |
@@ -257,7 +374,7 @@ describe('search highlighting', function()
       {4:search hit BOTTOM, continuing at TOP}    |
     ]])
 
-    execute("call clearmatches()")
+    feed_command("call clearmatches()")
     screen:expect([[
         very spec{2:^ial te}xt                     |
                                               |
@@ -270,7 +387,7 @@ describe('search highlighting', function()
 
     -- searchhl has priority over syntax, but in this case
     -- nonconflicting attributes are combined
-    execute("syntax keyword MyGroup special")
+    feed_command("syntax keyword MyGroup special")
     screen:expect([[
         very {5:spec}{7:^ial}{2: te}xt                     |
                                               |

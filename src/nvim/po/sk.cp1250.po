@@ -2689,11 +2689,6 @@ msgstr "E49: Chybná hodnota ve¾kosti rolovania"
 msgid "E901: Job table is full"
 msgstr ""
 
-#: ../globals.h:1022
-#, c-format
-msgid "E902: \"%s\" is not an executable"
-msgstr ""
-
 #: ../globals.h:1024
 #, c-format
 msgid "E364: Library call failed for \"%s()\""
@@ -3875,6 +3870,7 @@ msgid ""
 "You may want to delete the .swp file now.\n"
 "\n"
 msgstr "Potom vymažte odkladací súbor s príponou .swp.\n"
+"\n"
 
 #. use msg() to start the scrolling properly
 #: ../memline.c:1327

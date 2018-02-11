@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /*
  * move.c: Functions for moving the cursor and scrolling text.
  *
@@ -24,6 +27,7 @@
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/misc1.h"
+#include "nvim/option.h"
 #include "nvim/popupmnu.h"
 #include "nvim/screen.h"
 #include "nvim/strings.h"
@@ -151,12 +155,11 @@ void update_topline(void)
   old_topline = curwin->w_topline;
   old_topfill = curwin->w_topfill;
 
-  /*
-   * If the buffer is empty, always set topline to 1.
-   */
-  if (bufempty()) {             /* special case - file is empty */
-    if (curwin->w_topline != 1)
+  // If the buffer is empty, always set topline to 1.
+  if (BUFEMPTY()) {             // special case - file is empty
+    if (curwin->w_topline != 1) {
       redraw_later(NOT_VALID);
+    }
     curwin->w_topline = 1;
     curwin->w_botline = 2;
     curwin->w_valid |= VALID_BOTLINE|VALID_BOTLINE_AP;
@@ -669,8 +672,7 @@ int win_col_off(win_T *wp)
   return ((wp->w_p_nu || wp->w_p_rnu) ? number_width(wp) + 1 : 0)
          + (cmdwin_type == 0 || wp != curwin ? 0 : 1)
          + (int)wp->w_p_fdc
-         + (wp->w_buffer->b_signlist != NULL ? 2 : 0)
-  ;
+         + (signcolumn_on(wp) ? 2 : 0);
 }
 
 int curwin_col_off(void)
@@ -1760,7 +1762,7 @@ int onepage(int dir, long count)
 
     loff.fill = 0;
     if (dir == FORWARD) {
-      if (firstwin == lastwin && p_window > 0 && p_window < Rows - 1) {
+      if (ONE_WINDOW && p_window > 0 && p_window < Rows - 1) {
         /* Vi compatible scrolling */
         if (p_window <= 2)
           ++curwin->w_topline;
@@ -1794,7 +1796,7 @@ int onepage(int dir, long count)
         max_topfill();
         continue;
       }
-      if (firstwin == lastwin && p_window > 0 && p_window < Rows - 1) {
+      if (ONE_WINDOW && p_window > 0 && p_window < Rows - 1) {
         /* Vi compatible scrolling (sort of) */
         if (p_window <= 2)
           --curwin->w_topline;
@@ -1878,8 +1880,10 @@ int onepage(int dir, long count)
   }
   foldAdjustCursor();
   cursor_correct();
-  if (retval == OK)
+  check_cursor_col();
+  if (retval == OK) {
     beginline(BL_SOL | BL_FIX);
+  }
   curwin->w_valid &= ~(VALID_WCOL|VALID_WROW|VALID_VIRTCOL);
 
   /*
@@ -1984,9 +1988,8 @@ void halfpage(bool flag, linenr_T Prenum)
     while (n > 0 && curwin->w_botline <= curbuf->b_ml.ml_line_count) {
       if (curwin->w_topfill > 0) {
         i = 1;
-        if (--n < 0 && scrolled > 0)
-          break;
-        --curwin->w_topfill;
+        n--;
+        curwin->w_topfill--;
       } else {
         i = plines_nofill(curwin->w_topline);
         n -= i;
@@ -2062,9 +2065,8 @@ void halfpage(bool flag, linenr_T Prenum)
     while (n > 0 && curwin->w_topline > 1) {
       if (curwin->w_topfill < diff_check_fill(curwin, curwin->w_topline)) {
         i = 1;
-        if (--n < 0 && scrolled > 0)
-          break;
-        ++curwin->w_topfill;
+        n--;
+        curwin->w_topfill++;
       } else {
         i = plines_nofill(curwin->w_topline - 1);
         n -= i;
@@ -2137,18 +2139,17 @@ void do_check_cursorbind(void)
    * loop through the cursorbound windows
    */
   VIsual_select = VIsual_active = 0;
-  for (curwin = firstwin; curwin; curwin = curwin->w_next) {
+  FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
+    curwin = wp;
     curbuf = curwin->w_buffer;
     /* skip original window  and windows with 'noscrollbind' */
     if (curwin != old_curwin && curwin->w_p_crb) {
-      if (curwin->w_p_diff)
-        curwin->w_cursor.lnum
-          = diff_get_corresponding_line(old_curbuf,
-            line,
-            curbuf,
-            curwin->w_cursor.lnum);
-      else
+      if (curwin->w_p_diff) {
+        curwin->w_cursor.lnum =
+          diff_get_corresponding_line(old_curbuf, line);
+      } else {
         curwin->w_cursor.lnum = line;
+      }
       curwin->w_cursor.col = col;
       curwin->w_cursor.coladd = coladd;
       curwin->w_curswant = curswant;
@@ -2160,16 +2161,21 @@ void do_check_cursorbind(void)
         int restart_edit_save = restart_edit;
         restart_edit = true;
         check_cursor();
+        if (curwin->w_p_cul || curwin->w_p_cuc) {
+          validate_cursor();
+        }
         restart_edit = restart_edit_save;
       }
-      /* Correct cursor for multi-byte character. */
-      if (has_mbyte)
+      // Correct cursor for multi-byte character.
+      if (has_mbyte) {
         mb_adjust_cursor();
+      }
       redraw_later(VALID);
 
-      /* Only scroll when 'scrollbind' hasn't done this. */
-      if (!curwin->w_p_scb)
+      // Only scroll when 'scrollbind' hasn't done this.
+      if (!curwin->w_p_scb) {
         update_topline();
+      }
       curwin->w_redr_status = true;
     }
   }

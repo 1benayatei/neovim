@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -7,6 +10,7 @@
 #include <uv.h>
 
 #include "nvim/os/time.h"
+#include "nvim/os/input.h"
 #include "nvim/event/loop.h"
 #include "nvim/vim.h"
 #include "nvim/main.h"
@@ -34,38 +38,54 @@ uint64_t os_hrtime(void)
   return uv_hrtime();
 }
 
-/// Sleeps for a certain amount of milliseconds
+/// Sleeps for `ms` milliseconds.
 ///
-/// @param milliseconds Number of milliseconds to sleep
-/// @param ignoreinput If true, allow a SIGINT to interrupt us
-void os_delay(uint64_t milliseconds, bool ignoreinput)
+/// @param ms          Number of milliseconds to sleep
+/// @param ignoreinput If true, only SIGINT (CTRL-C) can interrupt.
+void os_delay(uint64_t ms, bool ignoreinput)
 {
   if (ignoreinput) {
-    if (milliseconds > INT_MAX) {
-      milliseconds = INT_MAX;
+    if (ms > INT_MAX) {
+      ms = INT_MAX;
     }
-    LOOP_PROCESS_EVENTS_UNTIL(&main_loop, NULL, (int)milliseconds, got_int);
+    LOOP_PROCESS_EVENTS_UNTIL(&main_loop, NULL, (int)ms, got_int);
   } else {
-    os_microdelay(milliseconds * 1000);
+    os_microdelay(ms * 1000u, ignoreinput);
   }
 }
 
-/// Sleeps for a certain amount of microseconds
+/// Sleeps for `us` microseconds.
 ///
-/// @param microseconds Number of microseconds to sleep
-void os_microdelay(uint64_t microseconds)
+/// @param us          Number of microseconds to sleep.
+/// @param ignoreinput If true, ignore all input (including SIGINT/CTRL-C).
+///                    If false, waiting is aborted on any input.
+void os_microdelay(uint64_t us, bool ignoreinput)
 {
-  uint64_t elapsed = 0;
-  uint64_t ns = microseconds * 1000;  // convert to nanoseconds
+  uint64_t elapsed = 0u;
   uint64_t base = uv_hrtime();
+  // Convert microseconds to nanoseconds, or UINT64_MAX on overflow.
+  const uint64_t ns = (us < UINT64_MAX / 1000u) ? us * 1000u : UINT64_MAX;
 
   uv_mutex_lock(&delay_mutex);
 
   while (elapsed < ns) {
-    if (uv_cond_timedwait(&delay_cond, &delay_mutex, ns - elapsed)
-        == UV_ETIMEDOUT)
+    // If ignoring input, we simply wait the full delay.
+    // Else we check for input in ~100ms intervals.
+    const uint64_t ns_delta = ignoreinput
+                              ? ns - elapsed
+                              : MIN(ns - elapsed, 100000000u);  // 100ms
+
+    const int rv = uv_cond_timedwait(&delay_cond, &delay_mutex, ns_delta);
+    if (0 != rv && UV_ETIMEDOUT != rv) {
+      assert(false);
       break;
-    uint64_t now = uv_hrtime();
+    }  // Else: Timeout proceeded normally.
+
+    if (!ignoreinput && os_char_avail()) {
+      break;
+    }
+
+    const uint64_t now = uv_hrtime();
     elapsed += now - base;
     base = now;
   }

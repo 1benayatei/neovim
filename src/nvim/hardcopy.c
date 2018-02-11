@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 /*
  * hardcopy.c: printing to paper
  */
@@ -269,17 +272,25 @@ char_u *parse_printmbfont(void)
  * Returns an error message for an illegal option, NULL otherwise.
  * Only used for the printer at the moment...
  */
-static char_u *parse_list_options(char_u *option_str, option_table_T *table, int table_size)
+static char_u *parse_list_options(char_u *option_str, option_table_T *table,
+                                  size_t table_size)
 {
+  option_table_T *old_opts;
+  char_u      *ret = NULL;
   char_u      *stringp;
   char_u      *colonp;
   char_u      *commap;
   char_u      *p;
-  int idx = 0;                          /* init for GCC */
+  size_t idx = 0;                          // init for GCC
   int len;
 
-  for (idx = 0; idx < table_size; ++idx)
-    table[idx].present = FALSE;
+  // Save the old values, so that they can be restored in case of an error.
+  old_opts = (option_table_T *)xmalloc(sizeof(option_table_T) * table_size);
+
+  for (idx = 0; idx < table_size; idx++) {
+    old_opts[idx] = table[idx];
+    table[idx].present = false;
+  }
 
   /*
    * Repeat for all comma separated parts.
@@ -287,8 +298,10 @@ static char_u *parse_list_options(char_u *option_str, option_table_T *table, int
   stringp = option_str;
   while (*stringp) {
     colonp = vim_strchr(stringp, ':');
-    if (colonp == NULL)
-      return (char_u *)N_("E550: Missing colon");
+    if (colonp == NULL) {
+      ret = (char_u *)N_("E550: Missing colon");
+      break;
+    }
     commap = vim_strchr(stringp, ',');
     if (commap == NULL)
       commap = option_str + STRLEN(option_str);
@@ -299,15 +312,19 @@ static char_u *parse_list_options(char_u *option_str, option_table_T *table, int
       if (STRNICMP(stringp, table[idx].name, len) == 0)
         break;
 
-    if (idx == table_size)
-      return (char_u *)N_("E551: Illegal component");
+    if (idx == table_size) {
+      ret = (char_u *)N_("E551: Illegal component");
+      break;
+    }
 
     p = colonp + 1;
     table[idx].present = TRUE;
 
     if (table[idx].hasnum) {
-      if (!ascii_isdigit(*p))
-        return (char_u *)N_("E552: digit expected");
+      if (!ascii_isdigit(*p)) {
+        ret = (char_u *)N_("E552: digit expected");
+        break;
+      }
 
       table[idx].number = getdigits_int(&p);
     }
@@ -320,7 +337,15 @@ static char_u *parse_list_options(char_u *option_str, option_table_T *table, int
       ++stringp;
   }
 
-  return NULL;
+  if (ret != NULL) {
+    // Restore old options in case of error
+    for (idx = 0; idx < table_size; idx++) {
+      table[idx] = old_opts[idx];
+    }
+  }
+
+  xfree(old_opts);
+  return ret;
 }
 
 
@@ -347,7 +372,6 @@ static void prt_get_attr(int hl_id, prt_text_attr_T *pattr, int modec)
 {
   int colorindex;
   uint32_t fg_color;
-  char    *color;
 
   pattr->bold = (highlight_has_attr(hl_id, HL_BOLD, modec) != NULL);
   pattr->italic = (highlight_has_attr(hl_id, HL_ITALIC, modec) != NULL);
@@ -355,11 +379,12 @@ static void prt_get_attr(int hl_id, prt_text_attr_T *pattr, int modec)
   pattr->undercurl = (highlight_has_attr(hl_id, HL_UNDERCURL, modec) != NULL);
 
   {
-    color = (char *)highlight_color(hl_id, (char_u *)"fg", modec);
-    if (color == NULL)
+    const char *color = highlight_color(hl_id, "fg", modec);
+    if (color == NULL) {
       colorindex = 0;
-    else
+    } else {
       colorindex = atoi(color);
+    }
 
     if (colorindex >= 0 && colorindex < t_colors)
       fg_color = prt_get_term_color(colorindex);
@@ -823,12 +848,10 @@ static colnr_T hardcopy_line(prt_settings_T *psettings, int page_line, prt_pos_T
    * Loop over the columns until the end of the file line or right margin.
    */
   for (col = ppos->column; line[col] != NUL && !need_break; col += outputlen) {
-    outputlen = 1;
-    if (has_mbyte && (outputlen = (*mb_ptr2len)(line + col)) < 1)
+    if ((outputlen = (*mb_ptr2len)(line + col)) < 1) {
       outputlen = 1;
-    /*
-     * syntax highlighting stuff.
-     */
+    }
+    // syntax highlighting stuff.
     if (psettings->do_syntax) {
       id = syn_get_id(curwin, ppos->file_line, col, 1, NULL, FALSE);
       if (id > 0)
@@ -1522,8 +1545,8 @@ static int prt_find_resource(char *name, struct prt_ps_resource_S *resource)
   /* Look for named resource file in runtimepath */
   STRCPY(buffer, "print");
   add_pathsep((char *)buffer);
-  vim_strcat(buffer, (char_u *)name, MAXPATHL);
-  vim_strcat(buffer, (char_u *)".ps", MAXPATHL);
+  xstrlcat((char *)buffer, name, MAXPATHL);
+  xstrlcat((char *)buffer, ".ps", MAXPATHL);
   resource->filename[0] = NUL;
   retval = (do_in_runtimepath(buffer, 0, prt_resource_name, resource->filename)
             && resource->filename[0] != NUL);
@@ -2105,7 +2128,7 @@ int mch_print_init(prt_settings_T *psettings, char_u *jobname, int forceit)
   props = enc_canon_props(p_encoding);
   if (!(props & ENC_8BIT) && ((*p_pmcs != NUL) || !(props & ENC_UNICODE))) {
     p_mbenc_first = NULL;
-    int effective_cmap;
+    int effective_cmap = 0;
     for (cmap = 0; cmap < (int)ARRAY_SIZE(prt_ps_mbfonts); cmap++)
       if (prt_match_encoding((char *)p_encoding, &prt_ps_mbfonts[cmap],
                              &p_mbenc)) {
@@ -2556,13 +2579,12 @@ int mch_print_begin(prt_settings_T *psettings)
 
   prt_conv.vc_type = CONV_NONE;
   if (!(enc_canon_props(p_enc) & enc_canon_props(p_encoding) & ENC_8BIT)) {
-    /* Set up encoding conversion if required */
-    if (FAIL == convert_setup(&prt_conv, p_enc, p_encoding)) {
-      EMSG2(_("E620: Unable to convert to print encoding \"%s\""),
-          p_encoding);
-      return FALSE;
+    // Set up encoding conversion if required
+    if (convert_setup(&prt_conv, p_enc, p_encoding) == FAIL) {
+      emsgf(_("E620: Unable to convert to print encoding \"%s\""),
+            p_encoding);
+      return false;
     }
-    prt_do_conv = TRUE;
   }
   prt_do_conv = prt_conv.vc_type != CONV_NONE;
 

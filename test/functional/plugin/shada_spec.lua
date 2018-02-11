@@ -3,6 +3,7 @@ local eq, nvim_eval, nvim_command, nvim, exc_exec, funcs, nvim_feed, curbuf =
   helpers.eq, helpers.eval, helpers.command, helpers.nvim, helpers.exc_exec,
   helpers.funcs, helpers.feed, helpers.curbuf
 local neq = helpers.neq
+local read_file = helpers.read_file
 
 local mpack = require('mpack')
 
@@ -43,9 +44,7 @@ local wshada, _, fname = get_shada_rw('Xtest-functional-plugin-shada.shada')
 local wshada_tmp, _, fname_tmp =
   get_shada_rw('Xtest-functional-plugin-shada.shada.tmp.f')
 
-if helpers.pending_win32(pending) then return end
-
-describe('In autoload/shada.vim', function()
+describe('autoload/shada.vim', function()
   local epoch = os.date('%Y-%m-%dT%H:%M:%S', 0)
   before_each(function()
     reset()
@@ -179,6 +178,7 @@ describe('In autoload/shada.vim', function()
         '  + n    name                 \'@\'',
         '  + rc   contents             ["abc", "def"]',
         '  + rt   type                 CHARACTERWISE',
+        '  + ru   is_unnamed           FALSE',
         '  + rw   block width          10',
         '  + sb   search backward      TRUE',
         '  + sc   smartcase value      FALSE',
@@ -204,6 +204,7 @@ describe('In autoload/shada.vim', function()
         'rt': 0,
         'rw': 10,
         'rc': ['abc', 'def'],
+        'ru': {'_TYPE': v:msgpack_types.boolean, '_VAL': 0},
         'n': 0x40,
         'l': 10,
         'c': 0,
@@ -226,6 +227,8 @@ describe('In autoload/shada.vim', function()
          .. '0 (CHARACTERWISE), 1 (LINEWISE), 2 (BLOCKWISE)',
         '  + rt   type             10',
         '  # Expected boolean',
+        '  + ru   is_unnamed       10',
+        '  # Expected boolean',
         '  + sc   smartcase value  NIL',
         '  # Expected boolean',
         '  + sm   magic value      "TRUE"',
@@ -240,6 +243,7 @@ describe('In autoload/shada.vim', function()
         'sp': {'_TYPE': v:msgpack_types.string, '_VAL': ["abc"]},
         'rt': 10,
         'rc': '10',
+        'ru': 10,
         'n': -0x40,
         'l': -10,
         'c': 'abc',
@@ -609,6 +613,18 @@ describe('In autoload/shada.vim', function()
         'abc',
         -1,
       ]}] ]]):gsub('\n', ''))
+      -- Regression: NUL separator must be properly supported
+      sd2strings_eq({
+        'History entry with timestamp ' .. epoch .. ':',
+        '  @ Description_  Value',
+        '  - history type  SEARCH',
+        '  - contents      ""',
+        '  - separator     \'\\0\'',
+      }, ([[ [{'type': 4, 'timestamp': 0, 'data': [
+        1,
+        '',
+        0x0
+      ]}] ]]):gsub('\n', ''))
     end)
 
     it('works with register items', function()
@@ -624,6 +640,7 @@ describe('In autoload/shada.vim', function()
         '  # Required key missing: rc',
         '  + rw   block width  0',
         '  + rt   type         CHARACTERWISE',
+        '  + ru   is_unnamed   FALSE',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
       }}] ]]):gsub('\n', ''))
       sd2strings_eq({
@@ -633,6 +650,7 @@ describe('In autoload/shada.vim', function()
         '  # Required key missing: rc',
         '  + rw   block width  0',
         '  + rt   type         CHARACTERWISE',
+        '  + ru   is_unnamed   FALSE',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
       }}] ]]):gsub('\n', ''))
@@ -643,9 +661,11 @@ describe('In autoload/shada.vim', function()
         '  + rc   contents     ["abc", "def"]',
         '  + rw   block width  0',
         '  + rt   type         CHARACTERWISE',
+        '  + ru   is_unnamed   FALSE',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
         'rc': ["abc", "def"],
+        'ru': {'_TYPE': v:msgpack_types.boolean, '_VAL': 0},
       }}] ]]):gsub('\n', ''))
       sd2strings_eq({
         'Register with timestamp ' .. epoch .. ':',
@@ -656,9 +676,11 @@ describe('In autoload/shada.vim', function()
         '  | - "abcdefghijklmnopqrstuvwxyz"',
         '  + rw   block width  0',
         '  + rt   type         CHARACTERWISE',
+        '  + ru   is_unnamed   TRUE',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
         'rc': ['abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
+        'ru': {'_TYPE': v:msgpack_types.boolean, '_VAL': 1},
       }}] ]]):gsub('\n', ''))
       sd2strings_eq({
         'Register with timestamp ' .. epoch .. ':',
@@ -669,6 +691,7 @@ describe('In autoload/shada.vim', function()
         '  | - "abcdefghijklmnopqrstuvwxyz"',
         '  + rw   block width  0',
         '  + rt   type         CHARACTERWISE',
+        '  + ru   is_unnamed   FALSE',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
         'rc': ['abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
@@ -684,6 +707,7 @@ describe('In autoload/shada.vim', function()
         '  | - "abcdefghijklmnopqrstuvwxyz"',
         '  + rw   block width  5',
         '  + rt   type         LINEWISE',
+        '  + ru   is_unnamed   FALSE',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
         'rc': ['abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
@@ -700,11 +724,14 @@ describe('In autoload/shada.vim', function()
         '  # Expected integer',
         '  + rw   block width  ""',
         '  + rt   type         BLOCKWISE',
+        '  # Expected boolean',
+        '  + ru   is_unnamed   ""',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
         'rc': ['abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
         'rw': "",
         'rt': 2,
+        'ru': ""
       }}] ]]):gsub('\n', ''))
       sd2strings_eq({
         'Register with timestamp ' .. epoch .. ':',
@@ -717,11 +744,32 @@ describe('In autoload/shada.vim', function()
         '  # Unexpected enum value: expected one of 0 (CHARACTERWISE), '
         .. '1 (LINEWISE), 2 (BLOCKWISE)',
         '  + rt   type         10',
+        '  # Expected boolean',
+        '  + ru   is_unnamed   ["abc", "def"]',
       }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
         'n': 0x20,
         'rc': 0,
         'rw': -1,
         'rt': 10,
+        'ru': ['abc', 'def'],
+      }}] ]]):gsub('\n', ''))
+      sd2strings_eq({
+        'Register with timestamp ' .. epoch .. ':',
+        '  % Key  Description  Value',
+        '  + n    name         \' \'',
+        '  + rc   contents     @',
+        '  | - "abcdefghijklmnopqrstuvwxyz"',
+        '  | - "abcdefghijklmnopqrstuvwxyz"',
+        '  + rw   block width  5',
+        '  + rt   type         LINEWISE',
+        '  # Expected boolean',
+        '  + ru   is_unnamed   0',
+      }, ([[ [{'type': 5, 'timestamp': 0, 'data': {
+        'n': 0x20,
+        'rc': ['abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
+        'rw': 5,
+        'rt': 1,
+        'ru': 0,
       }}] ]]):gsub('\n', ''))
     end)
 
@@ -837,7 +885,7 @@ describe('In autoload/shada.vim', function()
       sd2strings_eq({
         'Global mark with timestamp ' .. epoch .. ':',
         '  % Key  Description  Value',
-        '  + n    name         20',
+        '  + n    name         \'\\20\'',
         '  + f    file name    "foo"',
         '  # Value is negative',
         '  + l    line number  -10',
@@ -852,7 +900,18 @@ describe('In autoload/shada.vim', function()
       sd2strings_eq({
         'Global mark with timestamp ' .. epoch .. ':',
         '  % Key  Description  Value',
-        '  + n    name         20',
+        '  + n    name         128',
+        '  + f    file name    "foo"',
+        '  + l    line number  1',
+        '  + c    column       0',
+      }, ([[ [{'type': 7, 'timestamp': 0, 'data': {
+        'n': 128,
+        'f': 'foo',
+      }}] ]]):gsub('\n', ''))
+      sd2strings_eq({
+        'Global mark with timestamp ' .. epoch .. ':',
+        '  % Key  Description  Value',
+        '  + n    name         \'\\20\'',
         '  + f    file name    "foo"',
         '  # Expected integer',
         '  + l    line number  "FOO"',
@@ -1123,7 +1182,7 @@ describe('In autoload/shada.vim', function()
         'Local mark with timestamp ' .. epoch .. ':',
         '  % Key  Description  Value',
         '  + f    file name    "foo"',
-        '  + n    name         20',
+        '  + n    name         \'\\20\'',
         '  # Value is negative',
         '  + l    line number  -10',
         '  # Value is negative',
@@ -1138,7 +1197,7 @@ describe('In autoload/shada.vim', function()
         'Local mark with timestamp ' .. epoch .. ':',
         '  % Key  Description  Value',
         '  + f    file name    "foo"',
-        '  + n    name         20',
+        '  + n    name         \'\\20\'',
         '  # Expected integer',
         '  + l    line number  "FOO"',
         '  # Expected integer',
@@ -1932,13 +1991,13 @@ describe('In autoload/shada.vim', function()
         'Buffer list with timestamp ' .. epoch .. ':',
         '  % Key  Description  Value',
         '  # Expected binary string',
-        '  + f    file name    10',
+        '  + f    file name    \'\\10\'',
         '  + l    line number  1',
         '  + c    column       0',
         '',
         '  % Key  Description  Value',
         '  # Expected binary string',
-        '  + f    file name    20',
+        '  + f    file name    \'\\20\'',
         '  + l    line number  1',
         '  + c    column       0',
       })
@@ -1948,7 +2007,7 @@ describe('In autoload/shada.vim', function()
         'Buffer list with timestamp ' .. epoch .. ':',
         '  % Key  Description  Value',
         '  # Expected binary string',
-        '  + f    file name    10',
+        '  + f    file name    \'\\10\'',
         '  + l    line number  1',
         '  + c    column       0',
         '',
@@ -2016,13 +2075,14 @@ describe('In autoload/shada.vim', function()
     end
 
     it('works', function()
+      local version = nvim('get_vvar', 'version')
       getbstrings_eq({{timestamp='current', type=1, value={
         generator='shada.vim',
-        version=704,
+        version=version,
       }}}, {})
       getbstrings_eq({
         {timestamp='current', type=1, value={
-          generator='shada.vim', version=704
+          generator='shada.vim', version=version
         }},
         {timestamp=0, type=1, value={generator='test'}}
       }, {
@@ -2033,11 +2093,11 @@ describe('In autoload/shada.vim', function()
       nvim('set_var', 'shada#add_own_header', 1)
       getbstrings_eq({{timestamp='current', type=1, value={
         generator='shada.vim',
-        version=704,
+        version=version,
       }}}, {})
       getbstrings_eq({
         {timestamp='current', type=1, value={
-          generator='shada.vim', version=704
+          generator='shada.vim', version=version
         }},
         {timestamp=0, type=1, value={generator='test'}}
       }, {
@@ -2077,8 +2137,9 @@ describe('In autoload/shada.vim', function()
   end)
 end)
 
-describe('In plugin/shada.vim', function()
+describe('plugin/shada.vim', function()
   local epoch = os.date('%Y-%m-%dT%H:%M:%S', 0)
+  local eol = helpers.iswin() and '\r\n' or '\n'
   before_each(function()
     reset()
     os.remove(fname)
@@ -2092,9 +2153,7 @@ describe('In plugin/shada.vim', function()
   end)
 
   local shada_eq = function(expected, fname_)
-    local fd = io.open(fname_)
-    local mpack_result = fd:read('*a')
-    fd:close()
+    local mpack_result = read_file(fname_)
     mpack_eq(expected, mpack_result)
   end
 
@@ -2218,7 +2277,7 @@ describe('In plugin/shada.vim', function()
         '  + f            file name    ["foo"]',
         '  + l            line number  2',
         '  + c            column       -200',
-      }, '\n') .. '\n', io.open(fname .. '.tst'):read('*a'))
+      }, eol) .. eol, read_file(fname .. '.tst'))
       shada_eq({{
         timestamp=0,
         type=8,
@@ -2242,6 +2301,7 @@ describe('In plugin/shada.vim', function()
 
   describe('event FileWriteCmd', function()
     it('works', function()
+      if helpers.pending_win32(pending) then return end
       nvim('set_var', 'shada#add_own_header', 0)
       curbuf('set_lines', 0, 1, true, {
         'Jump with timestamp ' .. epoch .. ':',
@@ -2265,7 +2325,7 @@ describe('In plugin/shada.vim', function()
         'Jump with timestamp ' .. epoch .. ':',
         '  % Key________  Description  Value',
         '  + n            name         \'A\'',
-      }, '\n') .. '\n', io.open(fname .. '.tst'):read('*a'))
+      }, eol) .. eol, read_file(fname .. '.tst'))
       shada_eq({{
         timestamp=0,
         type=8,
@@ -2322,7 +2382,7 @@ describe('In plugin/shada.vim', function()
         '  + f            file name    ["foo"]',
         '  + l            line number  2',
         '  + c            column       -200',
-      }, '\n') .. '\n', io.open(fname .. '.tst'):read('*a'))
+      }, eol) .. eol, read_file(fname .. '.tst'))
       shada_eq({{
         timestamp=0,
         type=8,

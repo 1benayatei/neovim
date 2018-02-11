@@ -3,14 +3,17 @@
 
 #include <stdbool.h>
 
+#include "nvim/macros.h"
 #include "nvim/func_attr.h"
 #include "nvim/os/os_defs.h"
 
 // Definitions of various common control characters.
 
-#define CharOrd(x)      ((x) < 'a' ? (x) - 'A' : (x) - 'a')
-#define CharOrdLow(x)   ((x) - 'a')
-#define CharOrdUp(x)    ((x) - 'A')
+#define CharOrd(x)      ((uint8_t)(x) < 'a' \
+                         ? (uint8_t)(x) - 'A'\
+                         : (uint8_t)(x) - 'a')
+#define CharOrdLow(x)   ((uint8_t)(x) - 'a')
+#define CharOrdUp(x)    ((uint8_t)(x) - 'A')
 #define ROT13(c, a)     (((((c) - (a)) + 13) % 26) + (a))
 
 #define NUL             '\000'
@@ -18,15 +21,14 @@
 #define BS              '\010'
 #define TAB             '\011'
 #define NL              '\012'
-#define NL_STR          (char_u *)"\012"
+#define NL_STR          "\012"
 #define FF              '\014'
 #define CAR             '\015'  /* CR is used by Mac OS X */
 #define ESC             '\033'
-#define ESC_STR         (char_u *)"\033"
-#define ESC_STR_nc      "\033"
+#define ESC_STR         "\033"
 #define DEL             0x7f
-#define DEL_STR         (char_u *)"\177"
-#define CSI             0x9b    /* Control Sequence Introducer */
+#define DEL_STR         "\177"
+#define CSI             0x9b    // Control Sequence Introducer
 #define CSI_STR         "\233"
 #define DCS             0x90    /* Device Control String */
 #define STERM           0x9c    /* String Terminator */
@@ -97,6 +99,10 @@ static inline bool ascii_isxdigit(int)
   REAL_FATTR_CONST
   REAL_FATTR_ALWAYS_INLINE;
 
+static inline bool ascii_isident(int)
+  REAL_FATTR_CONST
+  REAL_FATTR_ALWAYS_INLINE;
+
 static inline bool ascii_isbdigit(int)
   REAL_FATTR_CONST
   REAL_FATTR_ALWAYS_INLINE;
@@ -135,6 +141,14 @@ static inline bool ascii_isxdigit(int c)
   return (c >= '0' && c <= '9')
          || (c >= 'a' && c <= 'f')
          || (c >= 'A' && c <= 'F');
+}
+
+/// Checks if `c` is an “identifier” character
+///
+/// That is, whether it is alphanumeric character or underscore.
+static inline bool ascii_isident(const int c)
+{
+  return ASCII_ISALNUM(c) || c == '_';
 }
 
 /// Checks if `c` is a binary digit, that is, 0-1.

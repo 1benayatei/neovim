@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -25,7 +28,9 @@
 #include "nvim/charset.h"
 #include "nvim/strings.h"
 
-#define DYNAMIC_BUFFER_INIT {NULL, 0, 0}
+#define DYNAMIC_BUFFER_INIT { NULL, 0, 0 }
+#define NS_1_SECOND         1000000000U     // 1 second, in nanoseconds
+#define OUT_DATA_THRESHOLD  1024 * 10U      // 10KB, "a few screenfuls" of data.
 
 typedef struct {
   char *data;
@@ -37,14 +42,15 @@ typedef struct {
 #endif
 
 /// Builds the argument vector for running the user-configured 'shell' (p_sh)
-/// with an optional command prefixed by 'shellcmdflag' (p_shcf).
+/// with an optional command prefixed by 'shellcmdflag' (p_shcf). E.g.:
+///
+///   ["shell", "-extra_args", "-shellcmdflag", "command with spaces"]
 ///
 /// @param cmd Command string, or NULL to run an interactive shell.
 /// @param extra_args Extra arguments to the shell, or NULL.
-/// @return A newly allocated argument vector. It must be freed with
-///         `shell_free_argv` when no longer needed.
+/// @return Newly allocated argument vector. Must be freed with shell_free_argv.
 char **shell_build_argv(const char *cmd, const char *extra_args)
-  FUNC_ATTR_NONNULL_RET FUNC_ATTR_MALLOC
+  FUNC_ATTR_NONNULL_RET
 {
   size_t argc = tokenize(p_sh, NULL) + (cmd ? tokenize(p_shcf, NULL) : 0);
   char **rv = xmalloc((argc + 4) * sizeof(*rv));
@@ -117,19 +123,16 @@ int os_call_shell(char_u *cmd, ShellOpts opts, char_u *extra_args)
     if (opts & kShellOptRead) {
       output_ptr = &output;
       forward_output = false;
+    } else if (opts & kShellOptDoOut) {
+      // Caller has already redirected output
+      forward_output = false;
     }
   }
 
   size_t nread;
-
-  int status = do_os_system(shell_build_argv((char *)cmd, (char *)extra_args),
-                            input.data,
-                            input.len,
-                            output_ptr,
-                            &nread,
-                            emsg_silent,
-                            forward_output);
-
+  int exitcode = do_os_system(shell_build_argv((char *)cmd, (char *)extra_args),
+                              input.data, input.len, output_ptr, &nread,
+                              emsg_silent, forward_output);
   xfree(input.data);
 
   if (output) {
@@ -137,16 +140,16 @@ int os_call_shell(char_u *cmd, ShellOpts opts, char_u *extra_args)
     xfree(output);
   }
 
-  if (!emsg_silent && status != 0 && !(opts & kShellOptSilent)) {
+  if (!emsg_silent && exitcode != 0 && !(opts & kShellOptSilent)) {
     MSG_PUTS(_("\nshell returned "));
-    msg_outnum(status);
+    msg_outnum(exitcode);
     msg_putchar('\n');
   }
 
   State = current_state;
   signal_accept_deadly();
 
-  return status;
+  return exitcode;
 }
 
 /// os_system - synchronously execute a command in the shell
@@ -155,7 +158,7 @@ int os_call_shell(char_u *cmd, ShellOpts opts, char_u *extra_args)
 ///   char *output = NULL;
 ///   size_t nread = 0;
 ///   char *argv[] = {"ls", "-la", NULL};
-///   int status = os_sytem(argv, NULL, 0, &output, &nread);
+///   int exitcode = os_sytem(argv, NULL, 0, &output, &nread);
 ///
 /// @param argv The commandline arguments to be passed to the shell. `argv`
 ///             will be consumed.
@@ -187,6 +190,10 @@ static int do_os_system(char **argv,
                         bool silent,
                         bool forward_output)
 {
+  out_data_decide_throttle(0);  // Initialize throttle decider.
+  out_data_ring(NULL, 0);       // Initialize output ring-buffer.
+  bool has_input = (input != NULL && input[0] != '\0');
+
   // the output buffer
   DynamicBuffer buf = DYNAMIC_BUFFER_INIT;
   stream_read_cb data_cb = system_data_cb;
@@ -204,20 +211,19 @@ static int do_os_system(char **argv,
   char prog[MAXPATHL];
   xstrlcpy(prog, argv[0], MAXPATHL);
 
-  Stream in, out, err;
   LibuvProcess uvproc = libuv_process_init(&main_loop, &buf);
   Process *proc = &uvproc.process;
   MultiQueue *events = multiqueue_new_child(main_loop.events);
   proc->events = events;
   proc->argv = argv;
-  proc->in = input != NULL ? &in : NULL;
-  proc->out = &out;
-  proc->err = &err;
-  if (!process_spawn(proc)) {
+  int status = process_spawn(proc, has_input, true, true);
+  if (status) {
     loop_poll_events(&main_loop, 0);
-    // Failed, probably due to `sh` not being executable
+    // Failed, probably 'shell' is not executable.
     if (!silent) {
-      MSG_PUTS(_("\nCannot execute "));
+      MSG_PUTS(_("\nshell failed to start: "));
+      msg_outtrans((char_u *)os_strerror(status));
+      MSG_PUTS(": ");
       msg_outtrans((char_u *)prog);
       msg_putchar('\n');
     }
@@ -225,39 +231,54 @@ static int do_os_system(char **argv,
     return -1;
   }
 
-  // We want to deal with stream events as fast a possible while queueing
-  // process events, so reset everything to NULL. It prevents closing the
+  // Note: unlike process events, stream events are not queued, as we want to
+  // deal with stream events as fast a possible.  It prevents closing the
   // streams while there's still data in the OS buffer (due to the process
   // exiting before all data is read).
-  if (input != NULL) {
-    proc->in->events = NULL;
-    wstream_init(proc->in, 0);
+  if (has_input) {
+    wstream_init(&proc->in, 0);
   }
-  proc->out->events = NULL;
-  rstream_init(proc->out, 0);
-  rstream_start(proc->out, data_cb, &buf);
-  proc->err->events = NULL;
-  rstream_init(proc->err, 0);
-  rstream_start(proc->err, data_cb, &buf);
+  rstream_init(&proc->out, 0);
+  rstream_start(&proc->out, data_cb, &buf);
+  rstream_init(&proc->err, 0);
+  rstream_start(&proc->err, data_cb, &buf);
 
   // write the input, if any
-  if (input) {
-    WBuffer *input_buffer = wstream_new_buffer((char *) input, len, 1, NULL);
+  if (has_input) {
+    WBuffer *input_buffer = wstream_new_buffer((char *)input, len, 1, NULL);
 
-    if (!wstream_write(&in, input_buffer)) {
+    if (!wstream_write(&proc->in, input_buffer)) {
       // couldn't write, stop the process and tell the user about it
       process_stop(proc);
       return -1;
     }
     // close the input stream after everything is written
-    wstream_set_write_cb(&in, shell_write_cb, NULL);
+    wstream_set_write_cb(&proc->in, shell_write_cb, NULL);
   }
 
-  // invoke busy_start here so event_poll_until wont change the busy state for
-  // the UI
+  // Invoke busy_start here so LOOP_PROCESS_EVENTS_UNTIL will not change the
+  // busy state.
   ui_busy_start();
   ui_flush();
-  int status = process_wait(proc, -1, NULL);
+  if (forward_output) {
+    msg_sb_eol();
+    msg_start();
+    msg_no_more = true;
+    lines_left = -1;
+  }
+  int exitcode = process_wait(proc, -1, NULL);
+  if (!got_int && out_data_decide_throttle(0)) {
+    // Last chunk of output was skipped; display it now.
+    out_data_ring(NULL, SIZE_MAX);
+  }
+  if (forward_output) {
+    // caller should decide if wait_return is invoked
+    no_wait_return++;
+    msg_end();
+    no_wait_return--;
+    msg_no_more = false;
+  }
+
   ui_busy_stop();
 
   // prepare the out parameters if requested
@@ -280,7 +301,7 @@ static int do_os_system(char **argv,
   assert(multiqueue_empty(events));
   multiqueue_free(events);
 
-  return status;
+  return exitcode;
 }
 
 ///  - ensures at least `desired` bytes in buffer
@@ -309,71 +330,178 @@ static void system_data_cb(Stream *stream, RBuffer *buf, size_t count,
   dbuf->len += nread;
 }
 
+/// Tracks output received for the current executing shell command, and displays
+/// a pulsing "..." when output should be skipped. Tracking depends on the
+/// synchronous/blocking nature of ":!".
+///
+/// Purpose:
+///   1. CTRL-C is more responsive. #1234 #5396
+///   2. Improves performance of :! (UI, esp. TUI, is the bottleneck).
+///   3. Avoids OOM during long-running, spammy :!.
+///
+/// Vim does not need this hack because:
+///   1. :! in terminal-Vim runs in cooked mode, so CTRL-C is caught by the
+///      terminal and raises SIGINT out-of-band.
+///   2. :! in terminal-Vim uses a tty (Nvim uses pipes), so commands
+///      (e.g. `git grep`) may page themselves.
+///
+/// @param size Length of data, used with internal state to decide whether
+///             output should be skipped. size=0 resets the internal state and
+///             returns the previous decision.
+///
+/// @returns true if output should be skipped and pulse was displayed.
+///          Returns the previous decision if size=0.
+static bool out_data_decide_throttle(size_t size)
+{
+  static uint64_t   started     = 0;  // Start time of the current throttle.
+  static size_t     received    = 0;  // Bytes observed since last throttle.
+  static size_t     visit       = 0;  // "Pulse" count of the current throttle.
+  static char       pulse_msg[] = { ' ', ' ', ' ', '\0' };
+
+  if (!size) {
+    bool previous_decision = (visit > 0);
+    started = received = visit = 0;
+    return previous_decision;
+  }
+
+  received += size;
+  if (received < OUT_DATA_THRESHOLD
+      // Display at least the first chunk of output even if it is big.
+      || (!started && received < size + 1000)) {
+    return false;
+  } else if (!visit) {
+    started = os_hrtime();
+  } else if (visit % 20 == 0) {
+    uint64_t since = os_hrtime() - started;
+    if (since > (3 * NS_1_SECOND)) {
+      received = visit = 0;
+      return false;
+    }
+  }
+
+  visit++;
+  // Pulse "..." at the bottom of the screen.
+  size_t tick = (visit % 20 == 0)
+                ? 3  // Force all dots "..." on last visit.
+                : (visit % 4);
+  pulse_msg[0] = (tick == 0) ? ' ' : '.';
+  pulse_msg[1] = (tick == 0 || 1 == tick) ? ' ' : '.';
+  pulse_msg[2] = (tick == 0 || 1 == tick || 2 == tick) ? ' ' : '.';
+  if (visit == 1) {
+    screen_del_lines(0, 0, 1, (int)Rows, NULL);
+  }
+  int lastrow = (int)Rows - 1;
+  screen_puts_len((char_u *)pulse_msg, ARRAY_SIZE(pulse_msg), lastrow, 0, 0);
+  ui_flush();
+  return true;
+}
+
+/// Saves output in a quasi-ringbuffer. Used to ensure the last ~page of
+/// output for a shell-command is always displayed.
+///
+/// Init mode: Resets the internal state.
+///   output = NULL
+///   size   = 0
+/// Print mode: Displays the current saved data.
+///   output = NULL
+///   size   = SIZE_MAX
+///
+/// @param  output  Data to save, or NULL to invoke a special mode.
+/// @param  size    Length of `output`.
+static void out_data_ring(char *output, size_t size)
+{
+#define MAX_CHUNK_SIZE (OUT_DATA_THRESHOLD / 2)
+  static char    last_skipped[MAX_CHUNK_SIZE];  // Saved output.
+  static size_t  last_skipped_len = 0;
+
+  assert(output != NULL || (size == 0 || size == SIZE_MAX));
+
+  if (output == NULL && size == 0) {          // Init mode
+    last_skipped_len = 0;
+    return;
+  }
+
+  if (output == NULL && size == SIZE_MAX) {   // Print mode
+    out_data_append_to_screen(last_skipped, &last_skipped_len, true);
+    return;
+  }
+
+  // This is basically a ring-buffer...
+  if (size >= MAX_CHUNK_SIZE) {               // Save mode
+    size_t start = size - MAX_CHUNK_SIZE;
+    memcpy(last_skipped, output + start, MAX_CHUNK_SIZE);
+    last_skipped_len = MAX_CHUNK_SIZE;
+  } else if (size > 0) {
+    // Length of the old data that can be kept.
+    size_t keep_len   = MIN(last_skipped_len, MAX_CHUNK_SIZE - size);
+    size_t keep_start = last_skipped_len - keep_len;
+    // Shift the kept part of the old data to the start.
+    if (keep_start) {
+      memmove(last_skipped, last_skipped + keep_start, keep_len);
+    }
+    // Copy the entire new data to the remaining space.
+    memcpy(last_skipped + keep_len, output, size);
+    last_skipped_len = keep_len + size;
+  }
+}
+
 /// Continue to append data to last screen line.
 ///
 /// @param output       Data to append to screen lines.
 /// @param remaining    Size of data.
 /// @param new_line     If true, next data output will be on a new line.
-static void append_to_screen_end(char *output, size_t remaining, bool new_line)
+static void out_data_append_to_screen(char *output, size_t *count,
+                                      bool eof)
 {
-  // Column of last row to start appending data to.
-  static colnr_T last_col = 0;
-
-  size_t off = 0;
-  int last_row = (int)Rows - 1;
-
-  while (off < remaining) {
-    // Found end of line?
-    if (output[off] == NL) {
-      // Can we start a new line or do we need to continue the last one?
-      if (last_col == 0) {
-        screen_del_lines(0, 0, 1, (int)Rows, NULL);
+  char *p = output, *end = output + *count;
+  while (p < end) {
+    if (*p == '\n' || *p == '\r' || *p == TAB || *p == BELL) {
+      msg_putchar_attr((uint8_t)(*p), 0);
+      p++;
+    } else {
+      // Note: this is not 100% precise:
+      // 1. we don't check if received continuation bytes are already invalid
+      //    and we thus do some buffering that could be avoided
+      // 2. we don't compose chars over buffer boundaries, even if we see an
+      //    incomplete UTF-8 sequence that could be composing with the last
+      //    complete sequence.
+      // This will be corrected when we switch to vterm based implementation
+      int i = *p ? mb_ptr2len_len((char_u *)p, (int)(end-p)) : 1;
+      if (!eof && i == 1 && utf8len_tab_zero[*(uint8_t *)p] > (end-p)) {
+        *count = (size_t)(p - output);
+        goto end;
       }
-      screen_puts_len((char_u *)output, (int)off, last_row, last_col, 0);
-      last_col = 0;
 
-      size_t skip = off + 1;
-      output += skip;
-      remaining -= skip;
-      off = 0;
-      continue;
+      (void)msg_outtrans_len_attr((char_u *)p, i, 0);
+      p += i;
     }
-
-    // Translate NUL to SOH
-    if (output[off] == NUL) {
-      output[off] = 1;
-    }
-
-    off++;
   }
 
-  if (remaining) {
-    if (last_col == 0) {
-      screen_del_lines(0, 0, 1, (int)Rows, NULL);
-    }
-    screen_puts_len((char_u *)output, (int)remaining, last_row, last_col, 0);
-    last_col += (colnr_T)remaining;
-  }
-
-  if (new_line) {
-    last_col = 0;
-  }
-
+end:
   ui_flush();
 }
 
 static void out_data_cb(Stream *stream, RBuffer *buf, size_t count, void *data,
     bool eof)
 {
-  // We always output the whole buffer, so the buffer can never
-  // wrap around.
   size_t cnt;
   char *ptr = rbuffer_read_ptr(buf, &cnt);
 
-  append_to_screen_end(ptr, cnt, eof);
+  if (ptr != NULL && cnt > 0
+      && out_data_decide_throttle(cnt)) {  // Skip output above a threshold.
+    // Save the skipped output. If it is the final chunk, we display it later.
+    out_data_ring(ptr, cnt);
+  } else {
+    out_data_append_to_screen(ptr, &cnt, eof);
+  }
+
   if (cnt) {
     rbuffer_consumed(buf, cnt);
   }
+
+  // Move remaining data to start of buffer, so the buffer can never
+  // wrap around.
+  rbuffer_reset(buf);
 }
 
 /// Parses a command string into a sequence of words, taking quotes into
@@ -462,14 +590,10 @@ static void read_input(DynamicBuffer *buf)
 
     if (len == l) {
       // Finished a line, add a NL, unless this line should not have one.
-      // FIXME need to make this more readable
       if (lnum != curbuf->b_op_end.lnum
-          || (!curbuf->b_p_bin
-            && curbuf->b_p_fixeol)
+          || (!curbuf->b_p_bin && curbuf->b_p_fixeol)
           || (lnum != curbuf->b_no_eol_lnum
-            && (lnum !=
-              curbuf->b_ml.ml_line_count
-              || curbuf->b_p_eol))) {
+              && (lnum != curbuf->b_ml.ml_line_count || curbuf->b_p_eol))) {
         dynamic_buffer_ensure(buf, buf->len + 1);
         buf->data[buf->len++] = NL;
       }
@@ -545,6 +669,12 @@ static size_t write_output(char *output, size_t remaining, bool to_buffer,
 
 static void shell_write_cb(Stream *stream, void *data, int status)
 {
+  if (status) {
+    // Can happen if system() tries to send input to a shell command that was
+    // backgrounded (:call system("cat - &", "foo")). #3529 #5241
+    msg_schedule_emsgf(_("E5677: Error writing input to shell-command: %s"),
+                       uv_err_name(status));
+  }
   stream_close(stream, NULL, NULL);
 }
 
